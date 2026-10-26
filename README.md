@@ -9,7 +9,7 @@
 | Metric | 類型 | 說明 |
 |---|---|---|
 | `cilium_policy_map_entries` | gauge | 該 endpoint policy map 目前的 entry 數 |
-| `cilium_policy_map_max_entries` | gauge | policy map 的上限（`bpf-policy-map-max`，預設 16384）。每個 endpoint 的 map 大小都一樣，所以每個節點只輸出一筆，只有 `node` label；整個叢集要一個數字可以用 `max(cilium_policy_map_max_entries)` |
+| `cilium_policy_map_max_entries` | gauge | policy map 的上限（`bpf-policy-map-max`，預設 16384）。每個 endpoint 的 map 大小都一樣，所以不帶任何 label；整個 cluster 只要一筆的做法見[下方](#整個-cluster-一筆的-max_entries) |
 | `cilium_custom_exporter_cilium_api_up` | gauge | 最近一次向 cilium-agent 取 endpoint 清單是否成功（1/0） |
 | `cilium_custom_exporter_errors_total{stage}` | counter | 收集錯誤次數，`stage` = `list_maps` / `read_map` / `cilium_api` |
 | `cilium_custom_exporter_collect_duration_seconds` | gauge | 最近一次背景讀取所有 map 花的時間 |
@@ -30,10 +30,21 @@
 ```
 cilium_policy_map_entries{endpoint_id="812",endpoint_type="pod",namespace="default",node="worker-1",pod="nginx-7c5ddbdf54-x2x7q"} 37
 cilium_policy_map_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="worker-1",pod=""} 9
-cilium_policy_map_max_entries{node="worker-1"} 16384
+cilium_policy_map_max_entries 16384
 ```
 
 `host`、`health` 這類 endpoint 不屬於任何 Pod，所以 `pod`、`namespace` 是空字串，但 map 一樣會匯出（host firewall 的規則就在 host endpoint 的 map 裡）。
+
+### 整個 cluster 一筆的 max_entries
+
+exporter 是 DaemonSet，每個節點的 Pod 各自被 Prometheus scrape，Prometheus 會替每個 target 的資料加上 `instance` 等 label。所以 `cilium_policy_map_max_entries` 本身雖然不帶 label，存進 Prometheus 後還是每個節點一筆（數值都一樣）。要整個 cluster 只留一筆，套用 `deploy/prometheusrule.yaml` 的 recording rule：
+
+```yaml
+- record: cluster:cilium_policy_map_max_entries:max
+  expr: max(cilium_policy_map_max_entries)
+```
+
+之後查詢和告警都用 `cluster:cilium_policy_map_max_entries:max`。每個節點的 exporter 都會回報，所以某一台 exporter 掛掉也不影響這個數字。
 
 ## 運作方式
 
@@ -87,7 +98,8 @@ curl -s http://<node IP>:9969/metrics | grep ^cilium_policy
 ## 接 Prometheus
 
 - **用 annotation 自動發現 Pod**（例如 prometheus community chart 的 `kubernetes-pods` job）：DaemonSet 已經帶 `prometheus.io/scrape: "true"`、`prometheus.io/port: "9969"`，不用額外設定。
-- **用 Prometheus Operator**：另外套用 `deploy/servicemonitor.yaml`。
+- **用 Prometheus Operator**：另外套用 `deploy/servicemonitor.yaml`，以及 recording rule 用的 `deploy/prometheusrule.yaml`。如果 Prometheus 有設定 `serviceMonitorSelector` / `ruleSelector`（例如 kube-prometheus-stack 預設要 `release: <release 名稱>` 這個 label），記得在這兩個檔案的 `metadata.labels` 加上對應的 label，不然 operator 不會載入。
+- 沒有用 Prometheus Operator 的話，把 `deploy/prometheusrule.yaml` 裡 `spec.groups` 的內容加到 Prometheus 的 rule file。
 
 不管哪一種，scrape 設定都要開 `honor_labels: true`（ServiceMonitor 裡是 `honorLabels: true`，範例檔已經設好）。不開的話，Prometheus 會用 exporter 自己那顆 Pod 的 `namespace` / `pod` 蓋掉，原本的值會被改名成 `exported_namespace` / `exported_pod`。
 
@@ -95,7 +107,7 @@ curl -s http://<node IP>:9969/metrics | grep ^cilium_policy
 
 ```promql
 # 每個 Pod 的 policy map 使用率
-cilium_policy_map_entries / on(node) group_left cilium_policy_map_max_entries
+cilium_policy_map_entries / on() group_left cluster:cilium_policy_map_max_entries:max
 
 # entry 數最多的 10 個 Pod
 topk(10, cilium_policy_map_entries{endpoint_type="pod"})
@@ -104,11 +116,13 @@ topk(10, cilium_policy_map_entries{endpoint_type="pod"})
 sum by (node) (cilium_policy_map_entries)
 ```
 
+還沒套用 recording rule 的話，把 `cluster:cilium_policy_map_max_entries:max` 換成 `max(cilium_policy_map_max_entries)`，結果一樣。
+
 告警範例（map 滿了以後，該 endpoint 的 policy 更新會寫不進去，新允許的流量可能被擋）：
 
 ```yaml
 - alert: CiliumPolicyMapAlmostFull
-  expr: cilium_policy_map_entries / on(node) group_left cilium_policy_map_max_entries > 0.9
+  expr: cilium_policy_map_entries / on() group_left cluster:cilium_policy_map_max_entries:max > 0.9
   for: 10m
   labels:
     severity: warning

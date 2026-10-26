@@ -201,9 +201,9 @@ func TestCollector(t *testing.T) {
 cilium_policy_map_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="node-a",pod=""} 5
 cilium_policy_map_entries{endpoint_id="3000",endpoint_type="unknown",namespace="",node="node-a",pod=""} 2
 cilium_policy_map_entries{endpoint_id="812",endpoint_type="pod",namespace="default",node="node-a",pod="nginx-7c5ddbdf54-x2x7q"} 37
-# HELP cilium_policy_map_max_entries Maximum number of entries a policy BPF map on this node can hold (bpf-policy-map-max). Every endpoint's map has the same size.
+# HELP cilium_policy_map_max_entries Maximum number of entries a policy BPF map can hold (bpf-policy-map-max). Every endpoint's map has the same size, so this has no labels.
 # TYPE cilium_policy_map_max_entries gauge
-cilium_policy_map_max_entries{node="node-a"} 16384
+cilium_policy_map_max_entries 16384
 # HELP cilium_custom_exporter_cilium_api_up Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).
 # TYPE cilium_custom_exporter_cilium_api_up gauge
 cilium_custom_exporter_cilium_api_up{node="node-a"} 1

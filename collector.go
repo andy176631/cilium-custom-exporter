@@ -19,8 +19,8 @@ var (
 		[]string{"node", "namespace", "pod", "endpoint_id", "endpoint_type"}, nil)
 	maxEntriesDesc = prometheus.NewDesc(
 		"cilium_policy_map_max_entries",
-		"Maximum number of entries a policy BPF map on this node can hold (bpf-policy-map-max). Every endpoint's map has the same size.",
-		[]string{"node"}, nil)
+		"Maximum number of entries a policy BPF map can hold (bpf-policy-map-max). Every endpoint's map has the same size, so this has no labels.",
+		nil, nil)
 	apiUpDesc = prometheus.NewDesc(
 		"cilium_custom_exporter_cilium_api_up",
 		"Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).",
@@ -163,7 +163,7 @@ func (c *policyMapCollector) Collect(ch chan<- prometheus.Metric) {
 			c.node, m.endpoint.Namespace, m.endpoint.Pod, strconv.Itoa(int(m.endpointID)), m.endpoint.Type)
 	}
 	if s.maxEntries > 0 {
-		ch <- prometheus.MustNewConstMetric(maxEntriesDesc, prometheus.GaugeValue, float64(s.maxEntries), c.node)
+		ch <- prometheus.MustNewConstMetric(maxEntriesDesc, prometheus.GaugeValue, float64(s.maxEntries))
 	}
 	apiUp := 0.0
 	if s.apiUp {
