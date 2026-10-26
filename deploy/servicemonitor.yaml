@@ -4,14 +4,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: cilium-policy-exporter
-  namespace: cilium-policy-exporter
+  name: cilium-custom-exporter
+  namespace: cilium-custom-exporter
   labels:
-    app.kubernetes.io/name: cilium-policy-exporter
+    app.kubernetes.io/name: cilium-custom-exporter
 spec:
   clusterIP: None
   selector:
-    app.kubernetes.io/name: cilium-policy-exporter
+    app.kubernetes.io/name: cilium-custom-exporter
   ports:
     - name: metrics
       port: 9969
@@ -20,14 +20,14 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: cilium-policy-exporter
-  namespace: cilium-policy-exporter
+  name: cilium-custom-exporter
+  namespace: cilium-custom-exporter
   labels:
-    app.kubernetes.io/name: cilium-policy-exporter
+    app.kubernetes.io/name: cilium-custom-exporter
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: cilium-policy-exporter
+      app.kubernetes.io/name: cilium-custom-exporter
   endpoints:
     - port: metrics
       interval: 30s

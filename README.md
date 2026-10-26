@@ -1,4 +1,4 @@
-# cilium-policy-exporter
+# cilium-custom-exporter
 
 以 DaemonSet 跑在每個節點上的 Prometheus exporter，匯出該節點上**每一個 Cilium endpoint policy BPF map 的 entry 數量**，每筆 metric 都帶 `pod`、`namespace`、`node` label。
 
@@ -10,9 +10,9 @@
 |---|---|---|
 | `cilium_policy_map_entries` | gauge | 該 endpoint policy map 目前的 entry 數 |
 | `cilium_policy_map_max_entries` | gauge | 該 map 的上限（Cilium 預設 16384，對應 `bpf-policy-map-max`） |
-| `cilium_policy_exporter_cilium_api_up` | gauge | 最近一次向 cilium-agent 取 endpoint 清單是否成功（1/0） |
-| `cilium_policy_exporter_errors_total{stage}` | counter | 收集錯誤次數，`stage` = `list_maps` / `read_map` / `cilium_api` |
-| `cilium_policy_exporter_collect_duration_seconds` | gauge | 這次 scrape 讀完所有 map 花的時間 |
+| `cilium_custom_exporter_cilium_api_up` | gauge | 最近一次向 cilium-agent 取 endpoint 清單是否成功（1/0） |
+| `cilium_custom_exporter_errors_total{stage}` | counter | 收集錯誤次數，`stage` = `list_maps` / `read_map` / `cilium_api` |
+| `cilium_custom_exporter_collect_duration_seconds` | gauge | 這次 scrape 讀完所有 map 花的時間 |
 
 map 相關 metric 的 label：
 
@@ -43,25 +43,25 @@ cilium_policy_map_max_entries{endpoint_id="812",endpoint_type="pod",namespace="d
    - map 在讀的同時被 cilium-agent 修改時，kernel 可能從頭重走，所以 key 會去重，步數也有上限，不會卡死或重複計算。
 3. **對應 Pod**：透過 cilium-agent 的 unix socket（`/var/run/cilium/cilium.sock`）呼叫 `GET /v1/endpoint`，用 `status.external-identifiers` 裡的 `k8s-namespace` / `k8s-pod-name` 把 endpoint ID 對應到 Pod。這個 API 欄位在 1.13 / 1.14 相同，不需要 Kubernetes API 權限，也不需要 RBAC。
    - endpoint 清單快取 30 秒；出現新的 endpoint ID 會立刻重抓。
-   - cilium-agent 重啟或連不上時，沿用最後一次成功的清單，map 數量照樣匯出，同時 `cilium_policy_exporter_cilium_api_up` 變成 0。
+   - cilium-agent 重啟或連不上時，沿用最後一次成功的清單，map 數量照樣匯出，同時 `cilium_custom_exporter_cilium_api_up` 變成 0。
 
 ## 建置 image
 
 ```bash
-make image IMAGE=<你的 registry>/cilium-policy-exporter:0.1.0
-make push  IMAGE=<你的 registry>/cilium-policy-exporter:0.1.0
+make image IMAGE=<你的 registry>/cilium-custom-exporter:0.1.0
+make push  IMAGE=<你的 registry>/cilium-custom-exporter:0.1.0
 ```
 
 或直接 `docker build -t <image> .`。產出的是靜態連結的 amd64 binary，base image 是 `gcr.io/distroless/static-debian12`。
 
 ## 部署
 
-1. 把 `deploy/daemonset.yaml` 裡的 `image: registry.example.com/cilium-policy-exporter:0.1.0` 換成你推上去的 image。
+1. 把 `deploy/daemonset.yaml` 裡的 `image: registry.example.com/cilium-custom-exporter:0.1.0` 換成你推上去的 image。
 2. 套用：
 
 ```bash
 kubectl apply -f deploy/daemonset.yaml
-kubectl -n cilium-policy-exporter rollout status ds/cilium-policy-exporter
+kubectl -n cilium-custom-exporter rollout status ds/cilium-custom-exporter
 ```
 
 YAML 的重點：
@@ -76,7 +76,7 @@ YAML 的重點：
 確認輸出：
 
 ```bash
-kubectl -n cilium-policy-exporter get pods -o wide
+kubectl -n cilium-custom-exporter get pods -o wide
 curl -s http://<node IP>:9969/metrics | grep ^cilium_policy
 ```
 
@@ -127,9 +127,9 @@ sum by (node) (cilium_policy_map_entries)
 
 | 現象 | 可能原因 |
 |---|---|
-| 沒有任何 `cilium_policy_map_entries` | 該節點的 cilium-agent 還沒起來，或 bpffs 不是掛在 `/sys/fs/bpf`（看 `cilium_policy_exporter_errors_total{stage="list_maps"}` 和 log） |
-| `endpoint_type="unknown"`、`pod` 是空的 | cilium-agent API 查不到這個 endpoint，通常是 agent 從沒連上過，或 agent 異常結束後殘留的 map。檢查 `cilium_policy_exporter_cilium_api_up` |
-| `cilium_policy_exporter_cilium_api_up` = 0 | `/var/run/cilium/cilium.sock` 連不上，看 exporter log 的錯誤訊息 |
+| 沒有任何 `cilium_policy_map_entries` | 該節點的 cilium-agent 還沒起來，或 bpffs 不是掛在 `/sys/fs/bpf`（看 `cilium_custom_exporter_errors_total{stage="list_maps"}` 和 log） |
+| `endpoint_type="unknown"`、`pod` 是空的 | cilium-agent API 查不到這個 endpoint，通常是 agent 從沒連上過，或 agent 異常結束後殘留的 map。檢查 `cilium_custom_exporter_cilium_api_up` |
+| `cilium_custom_exporter_cilium_api_up` = 0 | `/var/run/cilium/cilium.sock` 連不上，看 exporter log 的錯誤訊息 |
 | `errors_total{stage="read_map"}` 持續增加 | 權限不足（確認 `privileged: true`），或 map 格式不符，log 裡有完整錯誤 |
 
 ## 開發與測試

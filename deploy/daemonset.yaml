@@ -1,11 +1,11 @@
-# cilium-policy-exporter: one pod per node, exporting the entry count of every
+# cilium-custom-exporter: one pod per node, exporting the entry count of every
 # Cilium endpoint policy BPF map (Cilium 1.13 / 1.14).
 #
 # Before applying, replace the image below with the one you built and pushed.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: cilium-policy-exporter
+  name: cilium-custom-exporter
   labels:
     # The exporter reads BPF maps on the host, so the pod must be privileged.
     pod-security.kubernetes.io/enforce: privileged
@@ -13,20 +13,20 @@ metadata:
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: cilium-policy-exporter
-  namespace: cilium-policy-exporter
+  name: cilium-custom-exporter
+  namespace: cilium-custom-exporter
   labels:
-    app.kubernetes.io/name: cilium-policy-exporter
+    app.kubernetes.io/name: cilium-custom-exporter
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: cilium-policy-exporter
+      app.kubernetes.io/name: cilium-custom-exporter
   updateStrategy:
     type: RollingUpdate
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: cilium-policy-exporter
+        app.kubernetes.io/name: cilium-custom-exporter
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9969"
@@ -44,7 +44,7 @@ spec:
         - operator: Exists
       containers:
         - name: exporter
-          image: registry.example.com/cilium-policy-exporter:0.1.0
+          image: registry.example.com/cilium-custom-exporter:0.1.0
           imagePullPolicy: IfNotPresent
           args:
             - --listen-address=:9969

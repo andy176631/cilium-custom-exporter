@@ -200,18 +200,18 @@ cilium_policy_map_entries{endpoint_id="812",endpoint_type="pod",namespace="defau
 cilium_policy_map_max_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="node-a",pod=""} 16384
 cilium_policy_map_max_entries{endpoint_id="3000",endpoint_type="unknown",namespace="",node="node-a",pod=""} 16384
 cilium_policy_map_max_entries{endpoint_id="812",endpoint_type="pod",namespace="default",node="node-a",pod="nginx-7c5ddbdf54-x2x7q"} 16384
-# HELP cilium_policy_exporter_cilium_api_up Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).
-# TYPE cilium_policy_exporter_cilium_api_up gauge
-cilium_policy_exporter_cilium_api_up{node="node-a"} 1
-# HELP cilium_policy_exporter_errors_total Errors while collecting, by stage (list_maps, read_map, cilium_api).
-# TYPE cilium_policy_exporter_errors_total counter
-cilium_policy_exporter_errors_total{node="node-a",stage="cilium_api"} 0
-cilium_policy_exporter_errors_total{node="node-a",stage="list_maps"} 0
-cilium_policy_exporter_errors_total{node="node-a",stage="read_map"} 0
+# HELP cilium_custom_exporter_cilium_api_up Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).
+# TYPE cilium_custom_exporter_cilium_api_up gauge
+cilium_custom_exporter_cilium_api_up{node="node-a"} 1
+# HELP cilium_custom_exporter_errors_total Errors while collecting, by stage (list_maps, read_map, cilium_api).
+# TYPE cilium_custom_exporter_errors_total counter
+cilium_custom_exporter_errors_total{node="node-a",stage="cilium_api"} 0
+cilium_custom_exporter_errors_total{node="node-a",stage="list_maps"} 0
+cilium_custom_exporter_errors_total{node="node-a",stage="read_map"} 0
 `
 	if err := testutil.GatherAndCompare(reg, strings.NewReader(want),
 		"cilium_policy_map_entries", "cilium_policy_map_max_entries",
-		"cilium_policy_exporter_cilium_api_up", "cilium_policy_exporter_errors_total"); err != nil {
+		"cilium_custom_exporter_cilium_api_up", "cilium_custom_exporter_errors_total"); err != nil {
 		t.Error(err)
 	}
 }
