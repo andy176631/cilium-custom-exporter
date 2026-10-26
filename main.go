@@ -21,17 +21,22 @@ import (
 
 func main() {
 	var (
-		listenAddr = flag.String("listen-address", ":9969", "Address to serve /metrics and /healthz on.")
-		mapDir     = flag.String("bpf-map-dir", "/sys/fs/bpf/tc/globals", "Directory where cilium-agent pins its BPF maps.")
-		socket     = flag.String("cilium-socket", "/var/run/cilium/cilium.sock", "Path to the cilium-agent API socket.")
-		nodeName   = flag.String("node-name", os.Getenv("NODE_NAME"), "Kubernetes node name. Defaults to $NODE_NAME, then the hostname.")
-		cacheTTL   = flag.Duration("endpoint-cache-ttl", 30*time.Second, "How long to reuse the endpoint list from cilium-agent. A new endpoint ID always triggers a refresh.")
-		apiTimeout = flag.Duration("cilium-api-timeout", 5*time.Second, "Timeout for requests to the cilium-agent API.")
+		listenAddr      = flag.String("listen-address", ":9969", "Address to serve /metrics and /healthz on.")
+		collectInterval = flag.Duration("collect-interval", 30*time.Second, "How often to read the policy maps in the background. Scrapes are served from the last result and never read the maps themselves.")
+		mapDir          = flag.String("bpf-map-dir", "/sys/fs/bpf/tc/globals", "Directory where cilium-agent pins its BPF maps.")
+		socket          = flag.String("cilium-socket", "/var/run/cilium/cilium.sock", "Path to the cilium-agent API socket.")
+		nodeName        = flag.String("node-name", os.Getenv("NODE_NAME"), "Kubernetes node name. Defaults to $NODE_NAME, then the hostname.")
+		cacheTTL        = flag.Duration("endpoint-cache-ttl", 30*time.Second, "How long to reuse the endpoint list from cilium-agent. A new endpoint ID always triggers a refresh.")
+		apiTimeout      = flag.Duration("cilium-api-timeout", 5*time.Second, "Timeout for requests to the cilium-agent API.")
 	)
 	flag.Parse()
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, nil)))
 
+	if *collectInterval <= 0 {
+		slog.Error("--collect-interval must be positive", "value", *collectInterval)
+		os.Exit(1)
+	}
 	if *nodeName == "" {
 		h, err := os.Hostname()
 		if err != nil {
@@ -42,11 +47,12 @@ func main() {
 	}
 
 	endpoints := &endpointCache{client: newCiliumClient(*socket), ttl: *cacheTTL}
+	collector := newPolicyMapCollector(*nodeName, *mapDir, endpoints, *apiTimeout)
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-		newPolicyMapCollector(*nodeName, *mapDir, endpoints, *apiTimeout),
+		collector,
 	)
 
 	mux := http.NewServeMux()
@@ -68,7 +74,11 @@ func main() {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	slog.Info("Serving metrics", "addr", *listenAddr, "node", *nodeName, "bpf_map_dir", *mapDir, "cilium_socket", *socket)
+	// Read the maps once before serving so the first scrape already has data.
+	collector.refresh(ctx)
+	go collector.run(ctx, *collectInterval)
+
+	slog.Info("Serving metrics", "addr", *listenAddr, "node", *nodeName, "collect_interval", *collectInterval, "bpf_map_dir", *mapDir, "cilium_socket", *socket)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("HTTP server failed", "err", err)
 		os.Exit(1)

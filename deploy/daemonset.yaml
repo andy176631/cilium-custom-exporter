@@ -48,6 +48,9 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - --listen-address=:9969
+            # Read the policy maps every 30s in the background; scrapes are
+            # served from the last result and never touch the maps.
+            - --collect-interval=30s
             - --bpf-map-dir=/sys/fs/bpf/tc/globals
             - --cilium-socket=/var/run/cilium/cilium.sock
           env:
