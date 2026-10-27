@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"net/http"
@@ -160,7 +161,8 @@ func BenchmarkCountEntries(b *testing.B) {
 }
 
 // TestCollector pins policy maps into a private bpffs the way cilium-agent
-// does and scrapes them through the collector with a fake agent API.
+// does, reads them through the collector with a fake agent API, and checks
+// that scrapes are served from the last pass instead of reading the maps.
 func TestCollector(t *testing.T) {
 	bpffs := t.TempDir()
 	if err := unix.Mount("bpf", bpffs, "bpf", 0, ""); err != nil {
@@ -177,7 +179,8 @@ func TestCollector(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	pin("cilium_policy_00812", newPolicyMap(t, policyMapSpec113, policyKey113, 37))
+	web := newPolicyMap(t, policyMapSpec113, policyKey113, 37)
+	pin("cilium_policy_00812", web)
 	pin("cilium_policy_01504", newPolicyMap(t, policyMapSpec114, policyKey114, 5))
 	pin("cilium_policy_03000", newPolicyMap(t, policyMapSpec113, policyKey113, 2)) // not known to the agent
 	pin("cilium_call_policy", newPolicyMap(t, &ebpf.MapSpec{Type: ebpf.Hash, KeySize: 4, ValueSize: 4, MaxEntries: 8}, func(i int) []byte { return make([]byte, 4) }, 1))
@@ -189,31 +192,73 @@ func TestCollector(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	reg.MustRegister(c)
 
+	start := time.Now()
+	c.refresh(context.Background())
+
 	want := `
 # HELP cilium_policy_map_entries Number of entries in the endpoint's policy BPF map.
 # TYPE cilium_policy_map_entries gauge
 cilium_policy_map_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="node-a",pod=""} 5
 cilium_policy_map_entries{endpoint_id="3000",endpoint_type="unknown",namespace="",node="node-a",pod=""} 2
 cilium_policy_map_entries{endpoint_id="812",endpoint_type="pod",namespace="default",node="node-a",pod="nginx-7c5ddbdf54-x2x7q"} 37
-# HELP cilium_policy_map_max_entries Maximum number of entries the endpoint's policy BPF map can hold.
+# HELP cilium_policy_map_max_entries Maximum number of entries a policy BPF map can hold (bpf-policy-map-max). Every endpoint's map has the same size, so this has no labels.
 # TYPE cilium_policy_map_max_entries gauge
-cilium_policy_map_max_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="node-a",pod=""} 16384
-cilium_policy_map_max_entries{endpoint_id="3000",endpoint_type="unknown",namespace="",node="node-a",pod=""} 16384
-cilium_policy_map_max_entries{endpoint_id="812",endpoint_type="pod",namespace="default",node="node-a",pod="nginx-7c5ddbdf54-x2x7q"} 16384
-# HELP cilium_policy_exporter_cilium_api_up Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).
-# TYPE cilium_policy_exporter_cilium_api_up gauge
-cilium_policy_exporter_cilium_api_up{node="node-a"} 1
-# HELP cilium_policy_exporter_errors_total Errors while collecting, by stage (list_maps, read_map, cilium_api).
-# TYPE cilium_policy_exporter_errors_total counter
-cilium_policy_exporter_errors_total{node="node-a",stage="cilium_api"} 0
-cilium_policy_exporter_errors_total{node="node-a",stage="list_maps"} 0
-cilium_policy_exporter_errors_total{node="node-a",stage="read_map"} 0
+cilium_policy_map_max_entries 16384
+# HELP cilium_custom_exporter_cilium_api_up Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).
+# TYPE cilium_custom_exporter_cilium_api_up gauge
+cilium_custom_exporter_cilium_api_up{node="node-a"} 1
+# HELP cilium_custom_exporter_errors_total Errors while collecting, by stage (list_maps, read_map, cilium_api).
+# TYPE cilium_custom_exporter_errors_total counter
+cilium_custom_exporter_errors_total{node="node-a",stage="cilium_api"} 0
+cilium_custom_exporter_errors_total{node="node-a",stage="list_maps"} 0
+cilium_custom_exporter_errors_total{node="node-a",stage="read_map"} 0
 `
 	if err := testutil.GatherAndCompare(reg, strings.NewReader(want),
 		"cilium_policy_map_entries", "cilium_policy_map_max_entries",
-		"cilium_policy_exporter_cilium_api_up", "cilium_policy_exporter_errors_total"); err != nil {
+		"cilium_custom_exporter_cilium_api_up", "cilium_custom_exporter_errors_total"); err != nil {
 		t.Error(err)
 	}
+
+	// A new entry shows up only after the next pass, not on scrape.
+	if err := web.Put(policyKey113(37), make([]byte, policyMapSpec113.ValueSize)); err != nil {
+		t.Fatal(err)
+	}
+	if got := gaugeValue(t, reg, "cilium_policy_map_entries", "endpoint_id", "812"); got != 37 {
+		t.Errorf("entries on scrape before the next pass = %v, want 37 from the last pass", got)
+	}
+	c.refresh(context.Background())
+	if got := gaugeValue(t, reg, "cilium_policy_map_entries", "endpoint_id", "812"); got != 38 {
+		t.Errorf("entries after the next pass = %v, want 38", got)
+	}
+
+	ts := gaugeValue(t, reg, "cilium_custom_exporter_last_collect_timestamp_seconds", "node", "node-a")
+	if ts < float64(start.Unix()) || ts > float64(time.Now().Unix()+1) {
+		t.Errorf("last collect timestamp = %v, want between %d and now", ts, start.Unix())
+	}
+}
+
+// gaugeValue gathers reg and returns the value of the name series whose label
+// has the given value.
+func gaugeValue(t *testing.T, reg prometheus.Gatherer, name, label, value string) float64 {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range families {
+		if f.GetName() != name {
+			continue
+		}
+		for _, m := range f.GetMetric() {
+			for _, l := range m.GetLabel() {
+				if l.GetName() == label && l.GetValue() == value {
+					return m.GetGauge().GetValue()
+				}
+			}
+		}
+	}
+	t.Fatalf("no %s{%s=%q} gathered", name, label, value)
+	return 0
 }
 
 // A map that disappears between listing and opening (the endpoint was
