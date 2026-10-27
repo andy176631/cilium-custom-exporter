@@ -85,7 +85,7 @@ YAML 的重點：
 - 背景讀取間隔由 `--collect-interval=30s` 控制，建議跟 Prometheus 的 scrape interval 一樣或更短。
 - 唯讀掛載 host 的 `/sys/fs/bpf`（`mountPropagation: HostToContainer`，所以 cilium-agent 比 exporter 晚掛 bpffs 也看得到）和 `/var/run/cilium`（API socket）。
 - `tolerations: [{operator: Exists}]`，所有節點都會跑，包含 control-plane。
-- 不使用 ServiceAccount token，不需要任何 RBAC。
+- exporter 不使用 ServiceAccount token，不需要任何 RBAC（`deploy/prometheus.yaml` 裡的 Role 是給 Prometheus 用的）。
 - Namespace 加了 `pod-security.kubernetes.io/enforce: privileged`，叢集有開 Pod Security Admission 也能建立。
 
 確認輸出：
@@ -97,9 +97,16 @@ curl -s http://<node IP>:9969/metrics | grep ^cilium_policy
 
 ## 接 Prometheus
 
-- **用 annotation 自動發現 Pod**（例如 prometheus community chart 的 `kubernetes-pods` job）：DaemonSet 已經帶 `prometheus.io/scrape: "true"`、`prometheus.io/port: "9969"`，不用額外設定。
-- **用 Prometheus Operator**：另外套用 `deploy/servicemonitor.yaml`，以及 recording rule 用的 `deploy/prometheusrule.yaml`。如果 Prometheus 有設定 `serviceMonitorSelector` / `ruleSelector`（例如 kube-prometheus-stack 預設要 `release: <release 名稱>` 這個 label），記得在這兩個檔案的 `metadata.labels` 加上對應的 label，不然 operator 不會載入。
-- 沒有用 Prometheus Operator 的話，把 `deploy/prometheusrule.yaml` 裡 `spec.groups` 的內容加到 Prometheus 的 rule file。
+- **用 annotation 自動發現 Pod**（例如 prometheus community chart 的 `kubernetes-pods` job）：DaemonSet 已經帶 `prometheus.io/scrape: "true"`、`prometheus.io/port: "9969"`，不用額外設定。recording rule 請把 `deploy/prometheusrule.yaml` 裡 `spec.groups` 的內容加到 Prometheus 的 rule file。
+- **已經有 Prometheus Operator 管理的 Prometheus**（例如 kube-prometheus-stack）：套用 `deploy/servicemonitor.yaml`，以及 recording rule 用的 `deploy/prometheusrule.yaml`。如果那個 Prometheus 有設定 `serviceMonitorSelector` / `ruleSelector`（kube-prometheus-stack 預設要 `release: <release 名稱>` 這個 label），記得在這兩個檔案的 `metadata.labels` 加上對應的 label，不然不會被載入。
+- **有 Prometheus Operator，但還沒有 Prometheus**：再加上 `deploy/prometheus.yaml`。它會建立一個只抓這個 exporter 的 Prometheus（`kind: Prometheus` 的 CR，加上它需要的 ServiceAccount 和 Role），透過 `app.kubernetes.io/name: cilium-custom-exporter` label 選到上面兩個檔案。Prometheus Operator 本身（CRD 和 operator）要先裝好，這個 repo 不包含。
+
+  ```bash
+  kubectl apply -f deploy/servicemonitor.yaml -f deploy/prometheusrule.yaml -f deploy/prometheus.yaml
+  kubectl -n cilium-custom-exporter port-forward svc/prometheus-operated 9090
+  ```
+
+  然後打開 http://localhost:9090。資料保留 15 天，但預設存在 emptyDir，Pod 重建就會清掉；要保留的話，打開檔案裡的 `storage` 設定並填入叢集有的 StorageClass。
 
 不管哪一種，scrape 設定都要開 `honor_labels: true`（ServiceMonitor 裡是 `honorLabels: true`，範例檔已經設好）。不開的話，Prometheus 會用 exporter 自己那顆 Pod 的 `namespace` / `pod` 蓋掉，原本的值會被改名成 `exported_namespace` / `exported_pod`。
 
