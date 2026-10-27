@@ -8,7 +8,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: cilium-custom-exporter
-  namespace: cilium-custom-exporter
+  namespace: cilium
   labels:
     app.kubernetes.io/name: cilium-custom-exporter
 spec:

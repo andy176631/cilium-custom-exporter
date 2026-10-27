@@ -75,7 +75,7 @@ make push  IMAGE=<你的 registry>/cilium-custom-exporter:0.1.0
 
 ```bash
 kubectl apply -f deploy/daemonset.yaml
-kubectl -n cilium-custom-exporter rollout status ds/cilium-custom-exporter
+kubectl -n cilium rollout status ds/cilium-custom-exporter
 ```
 
 YAML 的重點：
@@ -86,12 +86,12 @@ YAML 的重點：
 - 唯讀掛載 host 的 `/sys/fs/bpf`（`mountPropagation: HostToContainer`，所以 cilium-agent 比 exporter 晚掛 bpffs 也看得到）和 `/var/run/cilium`（API socket）。
 - `tolerations: [{operator: Exists}]`，所有節點都會跑，包含 control-plane。
 - exporter 不使用 ServiceAccount token，不需要任何 RBAC（`deploy/prometheus.yaml` 裡的 Role 是給 Prometheus 用的）。
-- Namespace 加了 `pod-security.kubernetes.io/enforce: privileged`，叢集有開 Pod Security Admission 也能建立。
+- 所有資源都放在 `cilium` namespace，跟 Cilium 同一個，所以這個 namespace 要先存在。YAML 不會建立或修改它，`kubectl delete -f` 也不會刪到它。叢集有開 Pod Security Admission 的話，這個 namespace 要允許 privileged Pod；cilium-agent 本身就需要，通常已經是。
 
 確認輸出：
 
 ```bash
-kubectl -n cilium-custom-exporter get pods -o wide
+kubectl -n cilium get pods -l app.kubernetes.io/name=cilium-custom-exporter -o wide
 curl -s http://<node IP>:9969/metrics | grep ^cilium_policy
 ```
 
@@ -103,7 +103,7 @@ curl -s http://<node IP>:9969/metrics | grep ^cilium_policy
 
   ```bash
   kubectl apply -f deploy/servicemonitor.yaml -f deploy/prometheusrule.yaml -f deploy/prometheus.yaml
-  kubectl -n cilium-custom-exporter port-forward svc/prometheus-operated 9090
+  kubectl -n cilium port-forward svc/prometheus-operated 9090
   ```
 
   然後打開 http://localhost:9090。資料保留 15 天，但預設存在 emptyDir，Pod 重建就會清掉；要保留的話，打開檔案裡的 `storage` 設定並填入叢集有的 StorageClass。

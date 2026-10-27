@@ -6,13 +6,12 @@
 # kube-prometheus-stack), you do not need this file: make that Prometheus
 # select the ServiceMonitor and PrometheusRule instead.
 #
-# Needs the Prometheus Operator and its CRDs, and the namespace from
-# daemonset.yaml.
+# Needs the Prometheus Operator and its CRDs.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: cilium-custom-exporter-prometheus
-  namespace: cilium-custom-exporter
+  namespace: cilium
   labels:
     app.kubernetes.io/name: cilium-custom-exporter
 ---
@@ -22,7 +21,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: cilium-custom-exporter-prometheus
-  namespace: cilium-custom-exporter
+  namespace: cilium
   labels:
     app.kubernetes.io/name: cilium-custom-exporter
 rules:
@@ -37,7 +36,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: cilium-custom-exporter-prometheus
-  namespace: cilium-custom-exporter
+  namespace: cilium
   labels:
     app.kubernetes.io/name: cilium-custom-exporter
 roleRef:
@@ -47,13 +46,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: cilium-custom-exporter-prometheus
-    namespace: cilium-custom-exporter
+    namespace: cilium
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: Prometheus
 metadata:
   name: cilium-custom-exporter
-  namespace: cilium-custom-exporter
+  namespace: cilium
   labels:
     app.kubernetes.io/name: cilium-custom-exporter
 spec:
