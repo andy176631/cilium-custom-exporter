@@ -1,0 +1,87 @@
+# Optional: a Prometheus instance, run by the Prometheus Operator, that scrapes
+# only this exporter. It picks up deploy/servicemonitor.yaml and
+# deploy/prometheusrule.yaml through their app.kubernetes.io/name label.
+#
+# If the cluster already has a Prometheus (for example from
+# kube-prometheus-stack), you do not need this file: make that Prometheus
+# select the ServiceMonitor and PrometheusRule instead.
+#
+# Needs the Prometheus Operator and its CRDs.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cilium-custom-exporter-prometheus
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-exporter
+---
+# Lets Prometheus discover the exporter pods behind the ServiceMonitor's
+# Service. Both live in this namespace, so a Role is enough.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cilium-custom-exporter-prometheus
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-exporter
+rules:
+  - apiGroups: [""]
+    resources: [services, endpoints, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cilium-custom-exporter-prometheus
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-exporter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cilium-custom-exporter-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: cilium-custom-exporter-prometheus
+    namespace: cilium
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: cilium-custom-exporter
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-exporter
+spec:
+  replicas: 1
+  serviceAccountName: cilium-custom-exporter-prometheus
+  # The namespace selectors are left unset, so only ServiceMonitors and rules
+  # in this namespace are considered.
+  serviceMonitorSelector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-custom-exporter
+  ruleSelector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-custom-exporter
+  scrapeInterval: 30s
+  evaluationInterval: 30s
+  # The operator keeps only 24h when this is unset.
+  retention: 15d
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # Data is kept in an emptyDir and lost when the pod is recreated. To keep
+  # it, uncomment this and use a StorageClass that exists in the cluster.
+  # storage:
+  #   volumeClaimTemplate:
+  #     spec:
+  #       storageClassName: <storage class>
+  #       resources:
+  #         requests:
+  #           storage: 10Gi

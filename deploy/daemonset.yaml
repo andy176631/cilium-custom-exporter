@@ -1,20 +1,17 @@
 # cilium-custom-exporter: one pod per node, exporting the entry count of every
 # Cilium endpoint policy BPF map (Cilium 1.13 / 1.14).
 #
+# Everything in deploy/ goes into the cilium namespace, next to Cilium. The
+# namespace is not created here, so deleting these files never deletes it. If
+# Pod Security Admission is enforced, the namespace must allow privileged pods,
+# which cilium-agent needs as well.
+#
 # Before applying, replace the image below with the one you built and pushed.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: cilium-custom-exporter
-  labels:
-    # The exporter reads BPF maps on the host, so the pod must be privileged.
-    pod-security.kubernetes.io/enforce: privileged
----
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: cilium-custom-exporter
-  namespace: cilium-custom-exporter
+  namespace: cilium
   labels:
     app.kubernetes.io/name: cilium-custom-exporter
 spec:
