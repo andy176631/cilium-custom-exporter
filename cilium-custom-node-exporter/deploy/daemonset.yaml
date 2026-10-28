@@ -1,0 +1,101 @@
+# cilium-custom-node-exporter: one pod per node, exporting the entry count of every
+# Cilium endpoint policy BPF map (Cilium 1.13 / 1.14).
+#
+# Everything in deploy/ goes into the cilium namespace, next to Cilium. The
+# namespace is not created here, so deleting these files never deletes it. If
+# Pod Security Admission is enforced, the namespace must allow privileged pods,
+# which cilium-agent needs as well.
+#
+# Before applying, replace the image below with the one you built and pushed.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cilium-custom-node-exporter
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-node-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-custom-node-exporter
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cilium-custom-node-exporter
+        app.kubernetes.io/part-of: cilium-custom-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9969"
+        prometheus.io/path: /metrics
+    spec:
+      # Host network keeps the exporter reachable even when the Cilium
+      # datapath on the node is broken, which is when these numbers matter.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # The exporter does not talk to the Kubernetes API.
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # Run on every node, including tainted control-plane nodes.
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: exporter
+          image: registry.example.com/cilium-custom-node-exporter:0.1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --listen-address=:9969
+            # Read the policy maps every 30s in the background; scrapes are
+            # served from the last result and never touch the maps.
+            - --collect-interval=30s
+            - --bpf-map-dir=/sys/fs/bpf/tc/globals
+            - --cilium-socket=/var/run/cilium/cilium.sock
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: metrics
+              containerPort: 9969
+              protocol: TCP
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            periodSeconds: 10
+          volumeMounts:
+            # Pinned BPF maps. HostToContainer picks up the bpffs mount even if
+            # cilium-agent mounts it after this pod starts.
+            - name: bpffs
+              mountPath: /sys/fs/bpf
+              mountPropagation: HostToContainer
+              readOnly: true
+            # cilium-agent API socket, used to map endpoint IDs to pods.
+            - name: cilium-run
+              mountPath: /var/run/cilium
+              readOnly: true
+      volumes:
+        - name: bpffs
+          hostPath:
+            path: /sys/fs/bpf
+            type: Directory
+        - name: cilium-run
+          hostPath:
+            path: /var/run/cilium
+            type: DirectoryOrCreate

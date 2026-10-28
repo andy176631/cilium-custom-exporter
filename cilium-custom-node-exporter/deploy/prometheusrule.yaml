@@ -1,0 +1,20 @@
+# Optional: records the policy map size as one series for the whole cluster.
+# Every node's exporter is its own scrape target, so Prometheus stores one copy
+# of cilium_policy_map_max_entries per node; this rule keeps a single one.
+#
+# This file is for clusters running the Prometheus Operator. Without it, copy
+# the groups below into a Prometheus rule file instead.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cilium-custom-node-exporter
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-node-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
+spec:
+  groups:
+    - name: cilium-custom-node-exporter
+      rules:
+        - record: cluster:cilium_policy_map_max_entries:max
+          expr: max(cilium_policy_map_max_entries)

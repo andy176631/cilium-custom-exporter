@@ -1,0 +1,38 @@
+# Optional: only for clusters running the Prometheus Operator.
+# If Prometheus discovers pods through the prometheus.io/* annotations in
+# daemonset.yaml, you do not need this file.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-custom-node-exporter
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-node-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: cilium-custom-node-exporter
+  ports:
+    - name: metrics
+      port: 9969
+      targetPort: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-custom-node-exporter
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-node-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-custom-node-exporter
+  endpoints:
+    - port: metrics
+      interval: 30s
+      # Keep the exporter's own namespace/pod/node labels (the policy map's
+      # owner) instead of renaming them to exported_namespace/exported_pod.
+      honorLabels: true
