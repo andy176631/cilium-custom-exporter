@@ -92,6 +92,9 @@ spec:
             # Identities are watched continuously; every 30s the cache is
             # aggregated and scrapes are served from that result.
             - --collect-interval=30s
+            # cilium_identity_label_distinct_values is only exported for the
+            # 10 namespaces with the most identities. 0 means every namespace.
+            - --distinct-values-top-namespaces=10
           ports:
             - name: metrics
               containerPort: 9970

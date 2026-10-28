@@ -30,6 +30,7 @@ func main() {
 		listenAddr      = flag.String("listen-address", ":9970", "Address to serve /metrics, /healthz and /readyz on.")
 		kubeconfig      = flag.String("kubeconfig", "", "Path to a kubeconfig. Empty means the in-cluster service account.")
 		collectInterval = flag.Duration("collect-interval", 30*time.Second, "How often to aggregate the cached CiliumIdentity objects. Scrapes are served from the last result.")
+		topNamespaces   = flag.Int("distinct-values-top-namespaces", 10, "Export cilium_identity_label_distinct_values only for this many namespaces with the most identities (by cilium_identity_count). 0 means every namespace.")
 	)
 	flag.Parse()
 
@@ -37,6 +38,10 @@ func main() {
 
 	if *collectInterval <= 0 {
 		slog.Error("--collect-interval must be positive", "value", *collectInterval)
+		os.Exit(1)
+	}
+	if *topNamespaces < 0 {
+		slog.Error("--distinct-values-top-namespaces must not be negative", "value", *topNamespaces)
 		os.Exit(1)
 	}
 
@@ -61,7 +66,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	collector := newIdentityCollector(informer.GetStore(), informer.HasSynced)
+	collector := newIdentityCollector(informer.GetStore(), informer.HasSynced, *topNamespaces)
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),
@@ -107,7 +112,7 @@ func main() {
 		collector.run(ctx, *collectInterval)
 	}()
 
-	slog.Info("Serving metrics", "addr", *listenAddr, "collect_interval", *collectInterval)
+	slog.Info("Serving metrics", "addr", *listenAddr, "collect_interval", *collectInterval, "distinct_values_top_namespaces", *topNamespaces)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("HTTP server failed", "err", err)
 		os.Exit(1)

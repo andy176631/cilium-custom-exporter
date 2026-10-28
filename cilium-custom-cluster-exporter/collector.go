@@ -20,7 +20,7 @@ var (
 		[]string{"namespace"}, nil)
 	distinctValuesDesc = prometheus.NewDesc(
 		"cilium_identity_label_distinct_values",
-		"Number of distinct values a security label key takes across the CiliumIdentity objects of a namespace.",
+		"Number of distinct values a security label key takes across the CiliumIdentity objects of a namespace. Only exported for the --distinct-values-top-namespaces namespaces with the most identities.",
 		[]string{"namespace", "key"}, nil)
 	syncedDesc = prometheus.NewDesc(
 		"cilium_custom_cluster_exporter_cache_synced",
@@ -40,8 +40,9 @@ var (
 // on its own schedule and serves the result of the last pass, so a scrape
 // never walks the cache or calls the API server.
 type identityCollector struct {
-	store  cache.Store
-	synced cache.InformerSynced
+	store         cache.Store
+	synced        cache.InformerSynced
+	topNamespaces int
 
 	last atomic.Pointer[clusterSnapshot]
 }
@@ -52,8 +53,8 @@ type clusterSnapshot struct {
 	finishedAt time.Time
 }
 
-func newIdentityCollector(store cache.Store, synced cache.InformerSynced) *identityCollector {
-	return &identityCollector{store: store, synced: synced}
+func newIdentityCollector(store cache.Store, synced cache.InformerSynced, topNamespaces int) *identityCollector {
+	return &identityCollector{store: store, synced: synced, topNamespaces: topNamespaces}
 }
 
 // run refreshes the snapshot every interval until ctx is done.
@@ -85,7 +86,7 @@ func (c *identityCollector) refresh() {
 			ids = append(ids, id)
 		}
 	}
-	s := &clusterSnapshot{agg: aggregateIdentities(ids)}
+	s := &clusterSnapshot{agg: aggregateIdentities(ids, c.topNamespaces)}
 	s.duration = time.Since(start)
 	s.finishedAt = time.Now()
 	c.last.Store(s)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -79,15 +80,25 @@ type aggregate struct {
 	distinct map[nsKey]int
 }
 
-func aggregateIdentities(ids []identity) aggregate {
+// aggregateIdentities counts identities. Distinct label values are only
+// counted for the topNamespaces namespaces with the most identities (ties
+// broken by name), to bound the number of series; 0 means every namespace.
+func aggregateIdentities(ids []identity, topNamespaces int) aggregate {
 	a := aggregate{
 		total:    len(ids),
 		perNS:    map[string]int{},
 		distinct: map[nsKey]int{},
 	}
-	values := map[nsKey]map[string]struct{}{}
 	for _, id := range ids {
 		a.perNS[id.namespace]++
+	}
+	selected := topNamespacesByCount(a.perNS, topNamespaces)
+
+	values := map[nsKey]map[string]struct{}{}
+	for _, id := range ids {
+		if !selected[id.namespace] {
+			continue
+		}
 		for k, v := range id.labels {
 			if k == namespaceLabel {
 				continue // already the namespace label of every series
@@ -103,4 +114,27 @@ func aggregateIdentities(ids []identity) aggregate {
 		a.distinct[nk] = len(vals)
 	}
 	return a
+}
+
+// topNamespacesByCount returns the n namespaces with the highest counts, or
+// all of them when n is 0 or larger than their number.
+func topNamespacesByCount(counts map[string]int, n int) map[string]bool {
+	names := make([]string, 0, len(counts))
+	for ns := range counts {
+		names = append(names, ns)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if counts[names[i]] != counts[names[j]] {
+			return counts[names[i]] > counts[names[j]]
+		}
+		return names[i] < names[j]
+	})
+	if n > 0 && n < len(names) {
+		names = names[:n]
+	}
+	selected := make(map[string]bool, len(names))
+	for _, ns := range names {
+		selected[ns] = true
+	}
+	return selected
 }

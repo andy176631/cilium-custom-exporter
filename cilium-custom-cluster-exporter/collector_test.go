@@ -61,7 +61,7 @@ func TestAggregateIdentities(t *testing.T) {
 		{name: "1004", namespace: "default", labels: podLabels("default", "k8s:app", "api")},
 		{name: "1005", labels: map[string]string{"k8s:some-cluster-wide": "x"}},
 	}
-	a := aggregateIdentities(ids)
+	a := aggregateIdentities(ids, 0)
 
 	if a.total != 5 {
 		t.Errorf("total = %d, want 5", a.total)
@@ -81,6 +81,42 @@ func TestAggregateIdentities(t *testing.T) {
 	}
 	if _, ok := a.distinct[nsKey{"payments", namespaceLabel}]; ok {
 		t.Error("the namespace label itself should not be reported")
+	}
+}
+
+func TestAggregateTopNamespaces(t *testing.T) {
+	var ids []identity
+	add := func(ns string, n int) {
+		for i := 0; i < n; i++ {
+			ids = append(ids, identity{namespace: ns, labels: podLabels(ns, "k8s:app", fmt.Sprint(i))})
+		}
+	}
+	add("payments", 5)
+	add("orders", 3)
+	add("billing", 3) // ties with orders, sorts first by name
+	add("default", 1)
+
+	a := aggregateIdentities(ids, 2)
+	if want := map[string]int{"payments": 5, "orders": 3, "billing": 3, "default": 1}; fmt.Sprint(a.perNS) != fmt.Sprint(want) {
+		t.Errorf("perNS = %v, want every namespace %v", a.perNS, want)
+	}
+	got := map[string]bool{}
+	for k := range a.distinct {
+		got[k.namespace] = true
+	}
+	if want := map[string]bool{"payments": true, "billing": true}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("distinct values for %v, want %v", got, want)
+	}
+	if v := a.distinct[nsKey{"payments", "k8s:app"}]; v != 5 {
+		t.Errorf("payments k8s:app = %d, want 5", v)
+	}
+
+	// More than there are namespaces, or 0, means all of them.
+	for _, n := range []int{0, 10} {
+		a = aggregateIdentities(ids, n)
+		if _, ok := a.distinct[nsKey{"default", "k8s:app"}]; !ok {
+			t.Errorf("top %d: default missing", n)
+		}
 	}
 }
 
@@ -133,7 +169,7 @@ func TestInformerToMetrics(t *testing.T) {
 	if err := informer.SetTransform(stripIdentity); err != nil {
 		t.Fatal(err)
 	}
-	c := newIdentityCollector(informer.GetStore(), informer.HasSynced)
+	c := newIdentityCollector(informer.GetStore(), informer.HasSynced, 10)
 
 	// Before the cache syncs only cache_synced is exported.
 	c.refresh()

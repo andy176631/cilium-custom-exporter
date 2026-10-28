@@ -12,7 +12,7 @@
 |---|---|---|---|
 | `cilium_identity_total` | gauge | | cluster 內 CiliumIdentity 的總數 |
 | `cilium_identity_count` | gauge | `namespace` | 每個 namespace 的 CiliumIdentity 數量 |
-| `cilium_identity_label_distinct_values` | gauge | `namespace`, `key` | 該 namespace 裡，這個 label key 在所有 identity 中有幾種不同的值 |
+| `cilium_identity_label_distinct_values` | gauge | `namespace`, `key` | 該 namespace 裡，這個 label key 在所有 identity 中有幾種不同的值。只匯出 identity 數最多的前 N 個 namespace（`--distinct-values-top-namespaces`，預設 10） |
 | `cilium_custom_cluster_exporter_cache_synced` | gauge | | 第一次從 API server list 完成前是 0。0 的期間不會匯出任何 identity metric，避免把「還沒讀完」當成「identity 變少」 |
 | `cilium_custom_cluster_exporter_collect_duration_seconds` | gauge | | 最近一次彙整花的時間 |
 | `cilium_custom_cluster_exporter_last_collect_timestamp_seconds` | gauge | | 最近一次彙整完成的時間（Unix 秒） |
@@ -29,9 +29,13 @@ cilium_identity_label_distinct_values{namespace="payments",key="k8s:app"} 2
 cilium_identity_label_distinct_values{namespace="payments",key="k8s:rollouts-pod-template-hash"} 37
 ```
 
-## 為什麼沒有每個 label 值一筆的 metric
+## series 數量的控制
 
-`cilium_identity_label_distinct_values` 每個 namespace/key 只有一筆，series 數量只跟 namespace 數和 label key 數有關，不會因為 identity 變多或每次 rollout 而增加。只匯出不同值的「數量」而不是值本身，正是為了避免 `rollouts-pod-template-hash` 這類每次部署都會變的 label 讓 series 不斷增加。
+`cilium_identity_label_distinct_values` 只匯出不同值的「數量」而不是值本身，所以 `rollouts-pod-template-hash` 這類每次部署都會變的 label 不會讓 series 不斷增加。每個 namespace/key 只有一筆。
+
+為了讓 series 數量不隨 namespace 數量成長，它只匯出 `cilium_identity_count` 排名前 N 的 namespace（`--distinct-values-top-namespaces`，預設 10；同數量時依 namespace 名稱排序；設成 0 表示全部）。所以 series 上限大約是 N × 每個 namespace 的 label key 數。`cilium_identity_total` 和 `cilium_identity_count` 不受影響，永遠包含所有 namespace。
+
+要注意的是，前 N 名的組成改變時（例如某個 namespace 的 identity 數超過原本第 N 名），掉出去的 namespace 的 series 會消失、新進來的會出現。
 
 它可以用來找出是哪個 label 讓 identity 變多。例如 `cilium_identity_label_distinct_values{namespace="payments", key="k8s:rollouts-pod-template-hash"} 37` 代表 payments 因為 rollouts hash 多出了 37 種 identity；這種 label 通常應該加進 Cilium 的 `labels` 設定（identity-relevant labels）排除掉。要看實際的值，用 `kubectl get ciliumidentities` 或 `cilium identity list`。
 
@@ -103,6 +107,7 @@ delta(cilium_identity_total[1h]) > 500
 | `--listen-address` | `:9970` | `/metrics`、`/healthz`、`/readyz` 的 listen 位址 |
 | `--kubeconfig` | 空（用 in-cluster ServiceAccount） | 在叢集外測試時指定 kubeconfig |
 | `--collect-interval` | `30s` | 背景彙整快取的間隔 |
+| `--distinct-values-top-namespaces` | `10` | 只對 identity 數前 N 名的 namespace 匯出 `cilium_identity_label_distinct_values`；0 表示全部 |
 
 ## 開發與測試
 
@@ -112,7 +117,7 @@ make test
 
 測試內容：
 
-- 彙整邏輯：總數、每個 namespace、distinct values。
+- 彙整邏輯：總數、每個 namespace、distinct values，以及只取前 N 名 namespace（含同數量時的排序）。
 - informer transform：縮減欄位、namespace 從 `metadata.labels` 補、tombstone 原樣通過。
 - 用 fake API 跑 informer 到 `/metrics`：37 個帶不同 `rollouts-pod-template-hash` 的 identity 得到 `distinct_values 37`，刪除 identity 後下一次彙整數字跟著變。
 
