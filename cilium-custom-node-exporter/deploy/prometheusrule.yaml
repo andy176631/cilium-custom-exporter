@@ -7,13 +7,14 @@
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: cilium-custom-exporter
+  name: cilium-custom-node-exporter
   namespace: cilium
   labels:
-    app.kubernetes.io/name: cilium-custom-exporter
+    app.kubernetes.io/name: cilium-custom-node-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
 spec:
   groups:
-    - name: cilium-custom-exporter
+    - name: cilium-custom-node-exporter
       rules:
         - record: cluster:cilium_policy_map_max_entries:max
           expr: max(cilium_policy_map_max_entries)

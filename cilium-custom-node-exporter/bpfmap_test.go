@@ -204,18 +204,18 @@ cilium_policy_map_entries{endpoint_id="812",endpoint_type="pod",namespace="defau
 # HELP cilium_policy_map_max_entries Maximum number of entries a policy BPF map can hold (bpf-policy-map-max). Every endpoint's map has the same size, so this has no labels.
 # TYPE cilium_policy_map_max_entries gauge
 cilium_policy_map_max_entries 16384
-# HELP cilium_custom_exporter_cilium_api_up Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).
-# TYPE cilium_custom_exporter_cilium_api_up gauge
-cilium_custom_exporter_cilium_api_up{node="node-a"} 1
-# HELP cilium_custom_exporter_errors_total Errors while collecting, by stage (list_maps, read_map, cilium_api).
-# TYPE cilium_custom_exporter_errors_total counter
-cilium_custom_exporter_errors_total{node="node-a",stage="cilium_api"} 0
-cilium_custom_exporter_errors_total{node="node-a",stage="list_maps"} 0
-cilium_custom_exporter_errors_total{node="node-a",stage="read_map"} 0
+# HELP cilium_custom_node_exporter_cilium_api_up Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).
+# TYPE cilium_custom_node_exporter_cilium_api_up gauge
+cilium_custom_node_exporter_cilium_api_up{node="node-a"} 1
+# HELP cilium_custom_node_exporter_errors_total Errors while collecting, by stage (list_maps, read_map, cilium_api).
+# TYPE cilium_custom_node_exporter_errors_total counter
+cilium_custom_node_exporter_errors_total{node="node-a",stage="cilium_api"} 0
+cilium_custom_node_exporter_errors_total{node="node-a",stage="list_maps"} 0
+cilium_custom_node_exporter_errors_total{node="node-a",stage="read_map"} 0
 `
 	if err := testutil.GatherAndCompare(reg, strings.NewReader(want),
 		"cilium_policy_map_entries", "cilium_policy_map_max_entries",
-		"cilium_custom_exporter_cilium_api_up", "cilium_custom_exporter_errors_total"); err != nil {
+		"cilium_custom_node_exporter_cilium_api_up", "cilium_custom_node_exporter_errors_total"); err != nil {
 		t.Error(err)
 	}
 
@@ -231,7 +231,7 @@ cilium_custom_exporter_errors_total{node="node-a",stage="read_map"} 0
 		t.Errorf("entries after the next pass = %v, want 38", got)
 	}
 
-	ts := gaugeValue(t, reg, "cilium_custom_exporter_last_collect_timestamp_seconds", "node", "node-a")
+	ts := gaugeValue(t, reg, "cilium_custom_node_exporter_last_collect_timestamp_seconds", "node", "node-a")
 	if ts < float64(start.Unix()) || ts > float64(time.Now().Unix()+1) {
 		t.Errorf("last collect timestamp = %v, want between %d and now", ts, start.Unix())
 	}

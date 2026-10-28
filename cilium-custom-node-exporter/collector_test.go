@@ -13,10 +13,10 @@ import (
 
 func TestCollectBeforeFirstPass(t *testing.T) {
 	c := newPolicyMapCollector("node-a", t.TempDir(), &endpointCache{client: newCiliumClient(filepath.Join(t.TempDir(), "cilium.sock"))}, time.Second)
-	if n := testutil.CollectAndCount(c, "cilium_policy_map_entries", "cilium_custom_exporter_last_collect_timestamp_seconds"); n != 0 {
+	if n := testutil.CollectAndCount(c, "cilium_policy_map_entries", "cilium_custom_node_exporter_last_collect_timestamp_seconds"); n != 0 {
 		t.Errorf("collected %d snapshot metrics before the first pass, want 0", n)
 	}
-	if n := testutil.CollectAndCount(c, "cilium_custom_exporter_errors_total"); n != 3 {
+	if n := testutil.CollectAndCount(c, "cilium_custom_node_exporter_errors_total"); n != 3 {
 		t.Errorf("collected %d error counters, want 3", n)
 	}
 }

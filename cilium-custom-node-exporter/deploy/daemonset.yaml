@@ -1,4 +1,4 @@
-# cilium-custom-exporter: one pod per node, exporting the entry count of every
+# cilium-custom-node-exporter: one pod per node, exporting the entry count of every
 # Cilium endpoint policy BPF map (Cilium 1.13 / 1.14).
 #
 # Everything in deploy/ goes into the cilium namespace, next to Cilium. The
@@ -10,20 +10,22 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: cilium-custom-exporter
+  name: cilium-custom-node-exporter
   namespace: cilium
   labels:
-    app.kubernetes.io/name: cilium-custom-exporter
+    app.kubernetes.io/name: cilium-custom-node-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: cilium-custom-exporter
+      app.kubernetes.io/name: cilium-custom-node-exporter
   updateStrategy:
     type: RollingUpdate
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: cilium-custom-exporter
+        app.kubernetes.io/name: cilium-custom-node-exporter
+        app.kubernetes.io/part-of: cilium-custom-exporter
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9969"
@@ -41,7 +43,7 @@ spec:
         - operator: Exists
       containers:
         - name: exporter
-          image: registry.example.com/cilium-custom-exporter:0.1.0
+          image: registry.example.com/cilium-custom-node-exporter:0.1.0
           imagePullPolicy: IfNotPresent
           args:
             - --listen-address=:9969

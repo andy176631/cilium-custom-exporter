@@ -1,4 +1,4 @@
-// Command cilium-custom-exporter exports the number of entries in every
+// Command cilium-custom-node-exporter exports the number of entries in every
 // Cilium endpoint policy BPF map on a node, labelled with the pod that owns
 // the endpoint. It is meant to run as a DaemonSet next to cilium-agent.
 package main

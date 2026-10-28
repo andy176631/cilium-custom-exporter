@@ -22,15 +22,15 @@ var (
 		"Maximum number of entries a policy BPF map can hold (bpf-policy-map-max). Every endpoint's map has the same size, so this has no labels.",
 		nil, nil)
 	apiUpDesc = prometheus.NewDesc(
-		"cilium_custom_exporter_cilium_api_up",
+		"cilium_custom_node_exporter_cilium_api_up",
 		"Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).",
 		[]string{"node"}, nil)
 	durationDesc = prometheus.NewDesc(
-		"cilium_custom_exporter_collect_duration_seconds",
+		"cilium_custom_node_exporter_collect_duration_seconds",
 		"Time the last pass over the policy maps took.",
 		[]string{"node"}, nil)
 	lastCollectDesc = prometheus.NewDesc(
-		"cilium_custom_exporter_last_collect_timestamp_seconds",
+		"cilium_custom_node_exporter_last_collect_timestamp_seconds",
 		"Unix time at which the last pass over the policy maps finished.",
 		[]string{"node"}, nil)
 )
@@ -65,7 +65,7 @@ type mapSample struct {
 
 func newPolicyMapCollector(node, mapDir string, endpoints *endpointCache, apiTimeout time.Duration) *policyMapCollector {
 	errs := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name:        "cilium_custom_exporter_errors_total",
+		Name:        "cilium_custom_node_exporter_errors_total",
 		Help:        "Errors while collecting, by stage (list_maps, read_map, cilium_api).",
 		ConstLabels: prometheus.Labels{"node": node},
 	}, []string{"stage"})

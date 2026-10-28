@@ -1,4 +1,4 @@
-module github.com/andy176631/cilium-custom-exporter
+module github.com/andy176631/cilium-custom-exporter/cilium-custom-node-exporter
 
 go 1.22
 
