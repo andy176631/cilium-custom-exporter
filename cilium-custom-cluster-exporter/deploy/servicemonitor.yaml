@@ -1,0 +1,37 @@
+# Optional: only for clusters running the Prometheus Operator.
+# If Prometheus discovers pods through the prometheus.io/* annotations in
+# deployment.yaml, you do not need this file.
+apiVersion: v1
+kind: Service
+metadata:
+  name: cilium-custom-cluster-exporter
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-cluster-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
+spec:
+  selector:
+    app.kubernetes.io/name: cilium-custom-cluster-exporter
+  ports:
+    - name: metrics
+      port: 9970
+      targetPort: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: cilium-custom-cluster-exporter
+  namespace: cilium
+  labels:
+    app.kubernetes.io/name: cilium-custom-cluster-exporter
+    app.kubernetes.io/part-of: cilium-custom-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cilium-custom-cluster-exporter
+  endpoints:
+    - port: metrics
+      interval: 30s
+      # Keep the exporter's namespace label (the identity's namespace) instead
+      # of renaming it to exported_namespace.
+      honorLabels: true
