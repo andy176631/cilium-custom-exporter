@@ -1,5 +1,5 @@
 # cilium-custom-cluster-exporter: one pod for the whole cluster, exporting
-# CiliumIdentity counts and security labels read from the Kubernetes API
+# CiliumIdentity counts and label value counts read from the Kubernetes API
 # (Cilium 1.13 / 1.14, CRD identity allocation mode).
 #
 # Everything goes into the cilium namespace, which must already exist. The
@@ -92,15 +92,6 @@ spec:
             # Identities are watched continuously; every 30s the cache is
             # aggregated and scrapes are served from that result.
             - --collect-interval=30s
-            # Keys whose value changes on every rollout or job run. They are
-            # still counted in cilium_identity_label_distinct_values.
-            - --label-exclude-keys=k8s:rollouts-pod-template-hash,k8s:pod-template-hash,k8s:controller-revision-hash,k8s:pod-template-generation,k8s:controller-uid,k8s:batch.kubernetes.io/controller-uid,k8s:job-name,k8s:batch.kubernetes.io/job-name
-            # A key with more distinct values than this in a namespace is not
-            # expanded into cilium_identity_security_label series.
-            - --label-max-values=50
-            # One series per identity with all its labels. See README before
-            # turning it on.
-            - --identity-info=false
           ports:
             - name: metrics
               containerPort: 9970

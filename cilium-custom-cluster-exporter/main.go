@@ -1,5 +1,6 @@
 // Command cilium-custom-cluster-exporter exports the number of CiliumIdentity
-// objects in the cluster, per namespace and per security label. It watches
+// objects in the cluster, per namespace, and the number of distinct values of
+// each security label key. It watches
 // CiliumIdentity objects through the Kubernetes API and is meant to run as a
 // single-replica Deployment.
 package main
@@ -12,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -25,29 +25,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-// defaultExcludeKeys are labels that change with every rollout or job run, so
-// each value lives only as long as one ReplicaSet or Job. Cilium already
-// leaves pod-template-hash and controller-revision-hash out of identities by
-// default; these are the ones it keeps.
-var defaultExcludeKeys = []string{
-	"k8s:rollouts-pod-template-hash",
-	"k8s:pod-template-hash",
-	"k8s:controller-revision-hash",
-	"k8s:pod-template-generation",
-	"k8s:controller-uid",
-	"k8s:batch.kubernetes.io/controller-uid",
-	"k8s:job-name",
-	"k8s:batch.kubernetes.io/job-name",
-}
-
 func main() {
 	var (
 		listenAddr      = flag.String("listen-address", ":9970", "Address to serve /metrics, /healthz and /readyz on.")
 		kubeconfig      = flag.String("kubeconfig", "", "Path to a kubeconfig. Empty means the in-cluster service account.")
 		collectInterval = flag.Duration("collect-interval", 30*time.Second, "How often to aggregate the cached CiliumIdentity objects. Scrapes are served from the last result.")
-		excludeKeys     = flag.String("label-exclude-keys", strings.Join(defaultExcludeKeys, ","), "Comma-separated security label keys never exported as cilium_identity_security_label series. They are still counted in cilium_identity_label_distinct_values.")
-		maxValues       = flag.Int("label-max-values", 50, "Leave a security label key out of cilium_identity_security_label in a namespace once it has more distinct values than this. 0 means no limit.")
-		identityInfo    = flag.Bool("identity-info", false, "Also export cilium_identity_info, one series per identity with all its security labels. Off by default because it adds a series per identity and churns on every rollout.")
 	)
 	flag.Parse()
 
@@ -79,13 +61,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	opts := aggregateOptions{excludeKeys: map[string]bool{}, maxValuesPerKey: *maxValues}
-	for _, k := range strings.Split(*excludeKeys, ",") {
-		if k = strings.TrimSpace(k); k != "" {
-			opts.excludeKeys[k] = true
-		}
-	}
-	collector := newIdentityCollector(informer.GetStore(), informer.HasSynced, opts, *identityInfo)
+	collector := newIdentityCollector(informer.GetStore(), informer.HasSynced)
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),
@@ -131,7 +107,7 @@ func main() {
 		collector.run(ctx, *collectInterval)
 	}()
 
-	slog.Info("Serving metrics", "addr", *listenAddr, "collect_interval", *collectInterval, "label_max_values", *maxValues, "identity_info", *identityInfo)
+	slog.Info("Serving metrics", "addr", *listenAddr, "collect_interval", *collectInterval)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("HTTP server failed", "err", err)
 		os.Exit(1)

@@ -2,7 +2,7 @@
 
 > 這是 [cilium-custom-exporter](../README.md) 的 cluster 層 exporter。以下指令都在 `cilium-custom-cluster-exporter/` 目錄下執行。
 
-以單一 replica 的 Deployment 執行，透過 Kubernetes API server 讀取所有 `CiliumIdentity`（`cilium.io/v2`），匯出 identity 總數、每個 namespace 的數量、security label 的分布，以及每個 label key 有幾種不同的值。
+以單一 replica 的 Deployment 執行，透過 Kubernetes API server 讀取所有 `CiliumIdentity`（`cilium.io/v2`），匯出 identity 總數、每個 namespace 的數量，以及每個 security label key 有幾種不同的值。
 
 支援環境：Cilium 1.13 / 1.14，identity allocation mode 為 `crd`（預設值）。用 kvstore 模式的話，identity 不在 Kubernetes API 裡，這個 exporter 看不到。
 
@@ -12,11 +12,8 @@
 |---|---|---|---|
 | `cilium_identity_total` | gauge | | cluster 內 CiliumIdentity 的總數 |
 | `cilium_identity_count` | gauge | `namespace` | 每個 namespace 的 CiliumIdentity 數量 |
-| `cilium_identity_security_label` | gauge | `namespace`, `key`, `value` | 該 namespace 裡，security labels 含有 `key=value` 的 identity 數量 |
 | `cilium_identity_label_distinct_values` | gauge | `namespace`, `key` | 該 namespace 裡，這個 label key 在所有 identity 中有幾種不同的值 |
-| `cilium_identity_info` | gauge | `identity`, `namespace`, `labels` | 每個 identity 一筆，值固定為 1，`labels` 是完整的 security labels。**預設關閉**，見下方說明 |
 | `cilium_custom_cluster_exporter_cache_synced` | gauge | | 第一次從 API server list 完成前是 0。0 的期間不會匯出任何 identity metric，避免把「還沒讀完」當成「identity 變少」 |
-| `cilium_custom_cluster_exporter_suppressed_label_keys` | gauge | | 有幾組 namespace/key 因為被排除或值太多，沒有展開成 `cilium_identity_security_label` |
 | `cilium_custom_cluster_exporter_collect_duration_seconds` | gauge | | 最近一次彙整花的時間 |
 | `cilium_custom_cluster_exporter_last_collect_timestamp_seconds` | gauge | | 最近一次彙整完成的時間（Unix 秒） |
 
@@ -30,23 +27,13 @@ cilium_identity_count{namespace="default"} 3
 cilium_identity_count{namespace="payments"} 37
 cilium_identity_label_distinct_values{namespace="payments",key="k8s:app"} 2
 cilium_identity_label_distinct_values{namespace="payments",key="k8s:rollouts-pod-template-hash"} 37
-cilium_identity_security_label{namespace="payments",key="k8s:app",value="api"} 30
-cilium_identity_security_label{namespace="payments",key="k8s:app",value="worker"} 7
-cilium_identity_security_label{namespace="payments",key="k8s:io.cilium.k8s.policy.serviceaccount",value="default"} 37
-cilium_custom_cluster_exporter_suppressed_label_keys 1
 ```
 
-## Security label 的基數（cardinality）
+## 為什麼沒有每個 label 值一筆的 metric
 
-Prometheus 的成本跟 series 數量成正比，而 security label 是這個 exporter 最容易爆量的地方。設計上的取捨：
+`cilium_identity_label_distinct_values` 每個 namespace/key 只有一筆，series 數量只跟 namespace 數和 label key 數有關，不會因為 identity 變多或每次 rollout 而增加。只匯出不同值的「數量」而不是值本身，正是為了避免 `rollouts-pod-template-hash` 這類每次部署都會變的 label 讓 series 不斷增加。
 
-1. **預設不做「每個 identity 一筆」**。最直覺的做法是 `cilium_identity_info{identity="20001", labels="..."}`，但 identity 數量本身就可能上萬，而且每次 rollout 都會產生新的 identity ID、舊的被回收，series 會不斷換新，Prometheus 的 head block 和 index 會一直膨脹。所以這個做法放在 `--identity-info` 後面，預設關閉，只建議在 identity 數量少、或短時間除錯時打開。
-2. **改用「每個 namespace/key/value 一筆，值是 identity 數量」**（`cilium_identity_security_label`）。series 數量取決於「有幾種不同的 label 值」而不是「有幾個 identity」，同一個 Deployment 換版不會增加 series，回答的問題也比較實用，例如「payments 裡有幾個 identity 帶 `app=api`」。
-3. **會隨每次 rollout 改變的 key 不展開值**。像 Argo Rollouts 的 `rollouts-pod-template-hash`、Job 的 `job-name` / `controller-uid`，每個值只活一個 ReplicaSet 或一次 Job，展開就等於回到第 1 點的問題。這些 key 列在 `--label-exclude-keys`（預設清單見[參數](#參數)），仍然會計入 `cilium_identity_label_distinct_values`。
-4. **自動上限**：就算 key 沒有被排除，只要某個 namespace 裡這個 key 的不同值超過 `--label-max-values`（預設 50），就不展開它的值。被跳過的組數看 `cilium_custom_cluster_exporter_suppressed_label_keys`。
-5. **`cilium_identity_label_distinct_values` 永遠完整**。它每個 namespace/key 只有一筆，基數很低，正好用來找出「是哪個 label 讓 identity 變多」。例如 `cilium_identity_label_distinct_values{namespace="payments", key="k8s:rollouts-pod-template-hash"} 37` 代表 payments 因為 rollouts hash 多出了 37 種 identity；這種 label 通常應該加進 Cilium 的 `labels` 設定（identity-relevant labels）排除掉。
-
-估算：series 數量大約是「所有 namespace 中，未被排除的 key 的不同值總數」加上「namespace 數 × key 數」。一般叢集是幾百到幾千筆。
+它可以用來找出是哪個 label 讓 identity 變多。例如 `cilium_identity_label_distinct_values{namespace="payments", key="k8s:rollouts-pod-template-hash"} 37` 代表 payments 因為 rollouts hash 多出了 37 種 identity；這種 label 通常應該加進 Cilium 的 `labels` 設定（identity-relevant labels）排除掉。要看實際的值，用 `kubectl get ciliumidentities` 或 `cilium identity list`。
 
 ## 運作方式
 
@@ -105,9 +92,6 @@ topk(10, cilium_identity_count)
 # 哪些 label 讓 identity 變多（不同值最多的 key）
 topk(10, cilium_identity_label_distinct_values)
 
-# 每個 namespace 裡 app=api 的 identity 數
-cilium_identity_security_label{key="k8s:app", value="api"}
-
 # 一小時內 identity 增加超過 500 個
 delta(cilium_identity_total[1h]) > 500
 ```
@@ -119,9 +103,6 @@ delta(cilium_identity_total[1h]) > 500
 | `--listen-address` | `:9970` | `/metrics`、`/healthz`、`/readyz` 的 listen 位址 |
 | `--kubeconfig` | 空（用 in-cluster ServiceAccount） | 在叢集外測試時指定 kubeconfig |
 | `--collect-interval` | `30s` | 背景彙整快取的間隔 |
-| `--label-exclude-keys` | `k8s:rollouts-pod-template-hash,k8s:pod-template-hash,k8s:controller-revision-hash,k8s:pod-template-generation,k8s:controller-uid,k8s:batch.kubernetes.io/controller-uid,k8s:job-name,k8s:batch.kubernetes.io/job-name` | 不展開成 `cilium_identity_security_label` 的 key（逗號分隔），仍會計入 `cilium_identity_label_distinct_values` |
-| `--label-max-values` | `50` | 某個 namespace 裡一個 key 的不同值超過這個數就不展開；0 表示不限制 |
-| `--identity-info` | `false` | 匯出 `cilium_identity_info`（每個 identity 一筆） |
 
 ## 開發與測試
 
@@ -131,7 +112,7 @@ make test
 
 測試內容：
 
-- 彙整邏輯：總數、每個 namespace、distinct values、排除 key 與數量上限。
+- 彙整邏輯：總數、每個 namespace、distinct values。
 - informer transform：縮減欄位、namespace 從 `metadata.labels` 補、tombstone 原樣通過。
 - 用 fake API 跑 informer 到 `/metrics`：37 個帶不同 `rollouts-pod-template-hash` 的 identity 得到 `distinct_values 37`，刪除 identity 後下一次彙整數字跟著變。
 

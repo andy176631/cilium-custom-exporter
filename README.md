@@ -5,7 +5,7 @@ Cilium（1.13 / 1.14）的自訂 Prometheus exporter，分成兩個獨立的程�
 | 目錄 | 部署方式 | 資料來源 | 匯出內容 |
 |---|---|---|---|
 | [`cilium-custom-node-exporter/`](cilium-custom-node-exporter/README.md) | DaemonSet（每個節點一個） | 節點上 pinned 的 BPF map、cilium-agent API socket | 每個 endpoint policy BPF map 的 entry 數量（帶 `pod`、`namespace`、`node`） |
-| [`cilium-custom-cluster-exporter/`](cilium-custom-cluster-exporter/README.md) | Deployment（整個 cluster 一個） | Kubernetes API server 的 `CiliumIdentity` | identity 總數、每個 namespace 的數量、security label 分布、每個 label key 的不同值數量 |
+| [`cilium-custom-cluster-exporter/`](cilium-custom-cluster-exporter/README.md) | Deployment（整個 cluster 一個） | Kubernetes API server 的 `CiliumIdentity` | identity 總數、每個 namespace 的數量、每個 security label key 的不同值數量 |
 
 `cilium-custom-node-exporter` 就是原本的 `cilium-custom-exporter`，改名後移到子目錄。它自己的 metric（`cilium_custom_exporter_*`）也一起改成 `cilium_custom_node_exporter_*`，`cilium_policy_map_*` 不變。
 

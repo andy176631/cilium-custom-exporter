@@ -61,7 +61,7 @@ func TestAggregateIdentities(t *testing.T) {
 		{name: "1004", namespace: "default", labels: podLabels("default", "k8s:app", "api")},
 		{name: "1005", labels: map[string]string{"k8s:some-cluster-wide": "x"}},
 	}
-	a := aggregateIdentities(ids, aggregateOptions{excludeKeys: map[string]bool{"k8s:rollouts-pod-template-hash": true}})
+	a := aggregateIdentities(ids)
 
 	if a.total != 5 {
 		t.Errorf("total = %d, want 5", a.total)
@@ -81,28 +81,6 @@ func TestAggregateIdentities(t *testing.T) {
 	}
 	if _, ok := a.distinct[nsKey{"payments", namespaceLabel}]; ok {
 		t.Error("the namespace label itself should not be reported")
-	}
-	if got := a.valueCounts[labelValue{"payments", "k8s:app", "api"}]; got != 2 {
-		t.Errorf("payments app=api = %d, want 2", got)
-	}
-	for lv := range a.valueCounts {
-		if lv.key == "k8s:rollouts-pod-template-hash" {
-			t.Errorf("excluded key exported: %v", lv)
-		}
-	}
-	// One excluded key in one namespace.
-	if a.suppressed != 1 {
-		t.Errorf("suppressed = %d, want 1", a.suppressed)
-	}
-
-	// The per-key cap suppresses k8s:app in payments (2 values > 1) but not
-	// in default (1 value).
-	a = aggregateIdentities(ids, aggregateOptions{maxValuesPerKey: 1})
-	if _, ok := a.valueCounts[labelValue{"payments", "k8s:app", "api"}]; ok {
-		t.Error("k8s:app in payments should be over the cap")
-	}
-	if got := a.valueCounts[labelValue{"default", "k8s:app", "api"}]; got != 1 {
-		t.Errorf("default app=api = %d, want 1", got)
 	}
 }
 
@@ -155,8 +133,7 @@ func TestInformerToMetrics(t *testing.T) {
 	if err := informer.SetTransform(stripIdentity); err != nil {
 		t.Fatal(err)
 	}
-	c := newIdentityCollector(informer.GetStore(), informer.HasSynced,
-		aggregateOptions{excludeKeys: map[string]bool{"k8s:rollouts-pod-template-hash": true}, maxValuesPerKey: 50}, false)
+	c := newIdentityCollector(informer.GetStore(), informer.HasSynced)
 
 	// Before the cache syncs only cache_synced is exported.
 	c.refresh()
@@ -185,12 +162,12 @@ cilium_identity_count{namespace="payments"} 37
 	if v := metricValue(t, c, "cilium_identity_label_distinct_values", `key="k8s:rollouts-pod-template-hash",namespace="payments"`); v != 37 {
 		t.Errorf("distinct rollouts-pod-template-hash = %v, want 37", v)
 	}
-	if v := metricValue(t, c, "cilium_identity_security_label", `key="k8s:app",namespace="payments",value="api"`); v != 37 {
-		t.Errorf("payments app=api = %v, want 37", v)
+	if v := metricValue(t, c, "cilium_identity_label_distinct_values", `key="k8s:app",namespace="payments"`); v != 1 {
+		t.Errorf("distinct app in payments = %v, want 1", v)
 	}
-	if n := testutil.CollectAndCount(c, "cilium_identity_security_label"); n != 6 {
-		// payments: app, cluster, serviceaccount; default: the same three.
-		t.Errorf("%d cilium_identity_security_label series, want 6", n)
+	if n := testutil.CollectAndCount(c, "cilium_identity_label_distinct_values"); n != 7 {
+		// payments: app, cluster, serviceaccount, rollouts hash; default: the first three.
+		t.Errorf("%d cilium_identity_label_distinct_values series, want 7", n)
 	}
 
 	// Deletes reach the metrics on the next refresh.
@@ -207,22 +184,6 @@ cilium_identity_count{namespace="payments"} 37
 	}
 	if v := metricValue(t, c, "cilium_identity_label_distinct_values", `key="k8s:rollouts-pod-template-hash",namespace="payments"`); v != 27 {
 		t.Errorf("distinct after delete = %v, want 27", v)
-	}
-}
-
-func TestIdentityInfo(t *testing.T) {
-	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
-	obj, _ := stripIdentity(newIdentity(1001, podLabels("payments", "k8s:app", "api")))
-	store.Add(obj)
-	c := newIdentityCollector(store, func() bool { return true }, aggregateOptions{}, true)
-	c.refresh()
-	want := `
-# HELP cilium_identity_info One series per CiliumIdentity with all its security labels. Only exported with --identity-info.
-# TYPE cilium_identity_info gauge
-cilium_identity_info{identity="1001",labels="k8s:app=api,k8s:io.cilium.k8s.policy.cluster=default,k8s:io.cilium.k8s.policy.serviceaccount=default,k8s:io.kubernetes.pod.namespace=payments",namespace="payments"} 1
-`
-	if err := testutil.CollectAndCompare(c, strings.NewReader(want), "cilium_identity_info"); err != nil {
-		t.Error(err)
 	}
 }
 

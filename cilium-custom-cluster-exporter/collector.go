@@ -18,25 +18,13 @@ var (
 		"cilium_identity_count",
 		"Number of CiliumIdentity objects per namespace (from the k8s:io.kubernetes.pod.namespace security label; empty for identities without one).",
 		[]string{"namespace"}, nil)
-	securityLabelDesc = prometheus.NewDesc(
-		"cilium_identity_security_label",
-		"Number of CiliumIdentity objects in the namespace whose security labels contain key=value. Keys excluded by --label-exclude-keys or with more than --label-max-values distinct values are left out; see cilium_identity_label_distinct_values for those.",
-		[]string{"namespace", "key", "value"}, nil)
 	distinctValuesDesc = prometheus.NewDesc(
 		"cilium_identity_label_distinct_values",
 		"Number of distinct values a security label key takes across the CiliumIdentity objects of a namespace.",
 		[]string{"namespace", "key"}, nil)
-	infoDesc = prometheus.NewDesc(
-		"cilium_identity_info",
-		"One series per CiliumIdentity with all its security labels. Only exported with --identity-info.",
-		[]string{"identity", "namespace", "labels"}, nil)
 	syncedDesc = prometheus.NewDesc(
 		"cilium_custom_cluster_exporter_cache_synced",
 		"Whether the CiliumIdentity cache has finished its initial list from the API server (1) or not (0). No identity metrics are exported until it has.",
-		nil, nil)
-	suppressedDesc = prometheus.NewDesc(
-		"cilium_custom_cluster_exporter_suppressed_label_keys",
-		"Number of namespace/key pairs not expanded into cilium_identity_security_label series because the key is excluded or has too many values.",
 		nil, nil)
 	durationDesc = prometheus.NewDesc(
 		"cilium_custom_cluster_exporter_collect_duration_seconds",
@@ -52,23 +40,20 @@ var (
 // on its own schedule and serves the result of the last pass, so a scrape
 // never walks the cache or calls the API server.
 type identityCollector struct {
-	store        cache.Store
-	synced       cache.InformerSynced
-	opts         aggregateOptions
-	identityInfo bool
+	store  cache.Store
+	synced cache.InformerSynced
 
 	last atomic.Pointer[clusterSnapshot]
 }
 
 type clusterSnapshot struct {
 	agg        aggregate
-	info       []identity // only with identityInfo
 	duration   time.Duration
 	finishedAt time.Time
 }
 
-func newIdentityCollector(store cache.Store, synced cache.InformerSynced, opts aggregateOptions, identityInfo bool) *identityCollector {
-	return &identityCollector{store: store, synced: synced, opts: opts, identityInfo: identityInfo}
+func newIdentityCollector(store cache.Store, synced cache.InformerSynced) *identityCollector {
+	return &identityCollector{store: store, synced: synced}
 }
 
 // run refreshes the snapshot every interval until ctx is done.
@@ -100,10 +85,7 @@ func (c *identityCollector) refresh() {
 			ids = append(ids, id)
 		}
 	}
-	s := &clusterSnapshot{agg: aggregateIdentities(ids, c.opts)}
-	if c.identityInfo {
-		s.info = ids
-	}
+	s := &clusterSnapshot{agg: aggregateIdentities(ids)}
 	s.duration = time.Since(start)
 	s.finishedAt = time.Now()
 	c.last.Store(s)
@@ -112,11 +94,8 @@ func (c *identityCollector) refresh() {
 func (c *identityCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- totalDesc
 	ch <- perNamespaceDesc
-	ch <- securityLabelDesc
 	ch <- distinctValuesDesc
-	ch <- infoDesc
 	ch <- syncedDesc
-	ch <- suppressedDesc
 	ch <- durationDesc
 	ch <- lastCollectDesc
 }
@@ -142,13 +121,6 @@ func (c *identityCollector) Collect(ch chan<- prometheus.Metric) {
 	for k, n := range a.distinct {
 		ch <- prometheus.MustNewConstMetric(distinctValuesDesc, prometheus.GaugeValue, float64(n), k.namespace, k.key)
 	}
-	for lv, n := range a.valueCounts {
-		ch <- prometheus.MustNewConstMetric(securityLabelDesc, prometheus.GaugeValue, float64(n), lv.namespace, lv.key, lv.value)
-	}
-	for _, id := range s.info {
-		ch <- prometheus.MustNewConstMetric(infoDesc, prometheus.GaugeValue, 1, id.name, id.namespace, labelString(id.labels))
-	}
-	ch <- prometheus.MustNewConstMetric(suppressedDesc, prometheus.GaugeValue, float64(a.suppressed))
 	ch <- prometheus.MustNewConstMetric(durationDesc, prometheus.GaugeValue, s.duration.Seconds())
 	ch <- prometheus.MustNewConstMetric(lastCollectDesc, prometheus.GaugeValue, float64(s.finishedAt.UnixNano())/1e9)
 }
