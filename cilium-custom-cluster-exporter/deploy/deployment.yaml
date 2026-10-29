@@ -1,6 +1,7 @@
 # cilium-custom-cluster-exporter: one pod for the whole cluster, exporting
 # CiliumIdentity counts and label value counts read from the Kubernetes API
-# (Cilium 1.13 / 1.14, CRD identity allocation mode).
+# (Cilium 1.13 / 1.14 / 1.16). Needs identity-allocation-mode=crd, the Helm
+# default; with kvstore mode identities are not in the Kubernetes API.
 #
 # Everything goes into the cilium namespace, which must already exist. The
 # namespace is not created here, so deleting these files never deletes it.

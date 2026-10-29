@@ -2,7 +2,7 @@
 
 以單一 replica 的 Deployment 執行的 Prometheus exporter，透過 Kubernetes API server 讀取所有 `CiliumIdentity`（`cilium.io/v2`），匯出 **identity 總數**、**每個 namespace 的 identity 數**，以及 **identity 數前 N 名的 namespace 裡，每個 security label key 有幾種不同的值**。用來觀察 identity 的成長，並找出是哪個 label 讓 identity 變多。
 
-- 支援版本：Cilium 1.13、1.14，identity allocation mode 為 `crd`（預設值）。kvstore 模式的 identity 不在 Kubernetes API 裡，這個 exporter 看不到
+- 支援版本：Cilium 1.13、1.14、1.16（1.16.7 已實測，程式不需修改）。需要 identity allocation mode 為 `crd`（Helm 預設值，`identityAllocationMode: crd`）。kvstore 模式的 identity 不在 Kubernetes API 裡，這個 exporter 看不到
 - 部署：`deploy/deployment.yaml`，namespace `cilium`
 - 以下指令都在 `cilium-custom-cluster-exporter/` 目錄下執行；整個 repo 的介紹見[上層 README](../README.md)
 
