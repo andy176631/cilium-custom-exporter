@@ -27,3 +27,35 @@ kubectl apply -f deploy/prometheus.yaml
 ```
 
 建置與測試在各自的目錄執行 `make image` / `make test`，細節見各自的 README。
+
+## GitLab CI 打包並推到 Harbor
+
+[`.gitlab-ci.yml`](.gitlab-ci.yml) 只在推 tag 時執行。tag 的前綴決定要打包哪一個 exporter，`/` 後面的部分就是 image tag：
+
+| Tag | 打包的目錄 | 推上去的 image |
+|---|---|---|
+| `node-exporter/v1.2.0` | `cilium-custom-node-exporter/` | `<harbor>/cilium-custom-node-exporter:v1.2.0` |
+| `cluster-exporter/v1.0.0` | `cilium-custom-cluster-exporter/` | `<harbor>/cilium-custom-cluster-exporter:v1.0.0` |
+
+image tag 要符合 Docker tag 的規則（英數字、`_`、`.`、`-`，最多 128 字元）。其他 tag 和一般的 push 都不會執行任何 job。
+
+### Harbor 清單
+
+要推到哪些 Harbor 寫在 [`ci/harbor-registries.txt`](ci/harbor-registries.txt)，一行一個 `<harbor host>/<project>`，image 會推到每一個位置：
+
+```
+harbor-a.example.com/cilium
+harbor-b.example.com/cilium
+```
+
+### Runner 需求
+
+- 已安裝 docker 的 runner（例如 shell executor），而且已經對清單上的每個 Harbor 執行過 `docker login`。CI 不會處理帳密。
+- runner 的 tags 要和 `.gitlab-ci.yml` 中 `default.tags` 的值一致（預設是 `harbor`）。
+
+### 發版
+
+```bash
+git tag node-exporter/v1.2.0 && git push origin node-exporter/v1.2.0
+git tag cluster-exporter/v1.0.0 && git push origin cluster-exporter/v1.0.0
+```

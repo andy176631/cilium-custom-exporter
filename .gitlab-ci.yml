@@ -1,0 +1,56 @@
+# Tag-driven image build and push. The tag prefix picks the exporter and the
+# rest of the tag is the image tag:
+#
+#   node-exporter/v1.2.0     -> cilium-custom-node-exporter:v1.2.0
+#   cluster-exporter/v1.0.0  -> cilium-custom-cluster-exporter:v1.0.0
+#
+# The image is pushed to every Harbor listed in ci/harbor-registries.txt.
+# The runner must have docker and already be logged in to those Harbors.
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^(node|cluster)-exporter\/[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/
+
+default:
+  # Must match the tags of the runner that is logged in to Harbor.
+  tags:
+    - harbor
+
+variables:
+  HARBOR_LIST_FILE: ci/harbor-registries.txt
+
+.build-push:
+  script:
+    - IMAGE_TAG="${CI_COMMIT_TAG#*/}"
+    - LOCAL_IMAGE="$COMPONENT:$IMAGE_TAG"
+    - docker build -t "$LOCAL_IMAGE" "$COMPONENT"
+    - |
+      pushed=0
+      while read -r repo _ || [ -n "$repo" ]; do
+        case "$repo" in '' | '#'*) continue ;; esac
+        echo "push: $repo/$LOCAL_IMAGE"
+        docker tag "$LOCAL_IMAGE" "$repo/$LOCAL_IMAGE"
+        docker push "$repo/$LOCAL_IMAGE"
+        docker rmi "$repo/$LOCAL_IMAGE"
+        pushed=$((pushed + 1))
+      done < "$HARBOR_LIST_FILE"
+      if [ "$pushed" -eq 0 ]; then
+        echo "no Harbor listed in $HARBOR_LIST_FILE" >&2
+        exit 1
+      fi
+  after_script:
+    - docker rmi "$COMPONENT:${CI_COMMIT_TAG#*/}" || true
+
+node-exporter:
+  extends: .build-push
+  variables:
+    COMPONENT: cilium-custom-node-exporter
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^node-exporter\//
+
+cluster-exporter:
+  extends: .build-push
+  variables:
+    COMPONENT: cilium-custom-cluster-exporter
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^cluster-exporter\//
