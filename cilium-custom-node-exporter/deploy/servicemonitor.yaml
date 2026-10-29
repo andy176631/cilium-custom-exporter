@@ -38,7 +38,7 @@ spec:
       app.kubernetes.io/name: cilium-custom-node-exporter
   endpoints:
     - port: metrics
-      interval: 30s
+      interval: 1m
       # Keep the exporter's own namespace/pod/node labels (the policy map's
       # owner) instead of renaming them to exported_namespace/exported_pod.
       honorLabels: true

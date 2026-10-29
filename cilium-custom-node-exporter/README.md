@@ -126,7 +126,7 @@ DaemonSet 的重點：
 - 不使用 ServiceAccount token，不需要 RBAC。
 - `cilium` namespace 要先存在，YAML 不會建立或刪除它；有開 Pod Security Admission 的話要允許 privileged Pod。
 
-接 Prometheus：Pod 帶有 `prometheus.io/scrape` annotation；用 Prometheus Operator 的話套用 `deploy/servicemonitor.yaml` 和 `deploy/prometheusrule.yaml`（Service 放在 `cilium`，ServiceMonitor 放在 `monitoring` namespace 並用 `namespaceSelector` 選 `cilium` 裡的 Service；`monitoring` 要先存在）（還沒有 Prometheus 的話再加 repo 根目錄的 `deploy/prometheus.yaml`）。scrape 設定要開 `honor_labels: true`，不然 `namespace`、`pod` 會被 exporter 自己的 Pod 蓋掉。
+接 Prometheus：Pod 帶有 `prometheus.io/scrape` annotation；用 Prometheus Operator 的話套用 `deploy/servicemonitor.yaml` 和 `deploy/prometheusrule.yaml`（Service 放在 `cilium`，ServiceMonitor 放在 `monitoring` namespace 並用 `namespaceSelector` 選 `cilium` 裡的 Service；`monitoring` 要先存在；scrape interval 為 1 分鐘，scrape timeout 用 Prometheus 預設的 10 秒）（還沒有 Prometheus 的話再加 repo 根目錄的 `deploy/prometheus.yaml`）。scrape 設定要開 `honor_labels: true`，不然 `namespace`、`pod` 會被 exporter 自己的 Pod 蓋掉。
 
 ## 疑難排解
 

@@ -37,7 +37,7 @@ spec:
       app.kubernetes.io/name: cilium-custom-cluster-exporter
   endpoints:
     - port: metrics
-      interval: 30s
+      interval: 1m
       # Keep the exporter's namespace label (the identity's namespace) instead
       # of renaming it to exported_namespace.
       honorLabels: true

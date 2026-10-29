@@ -105,7 +105,7 @@ curl -s localhost:9970/metrics | grep ^cilium_identity
 - `Deployment`：1 個 replica（metrics 描述整個 cluster，多個 replica 只會讓 Prometheus 存多份）、非 root、唯讀 root filesystem、drop 所有 capabilities，不需要 hostNetwork 或 privileged。
 - `cilium` namespace 要先存在，YAML 不會建立或刪除它。
 
-接 Prometheus：Pod 帶有 `prometheus.io/scrape` annotation；用 Prometheus Operator 的話套用 `deploy/servicemonitor.yaml`（Service 放在 `cilium`，ServiceMonitor 放在 `monitoring` namespace 並用 `namespaceSelector` 選 `cilium` 裡的 Service；`monitoring` 要先存在）（還沒有 Prometheus 的話再加 repo 根目錄的 `deploy/prometheus.yaml`）。scrape 設定要開 `honor_labels: true`，不然 metric 的 `namespace`（identity 所屬的 namespace）會被 exporter Pod 自己的 `cilium` 蓋掉。
+接 Prometheus：Pod 帶有 `prometheus.io/scrape` annotation；用 Prometheus Operator 的話套用 `deploy/servicemonitor.yaml`（Service 放在 `cilium`，ServiceMonitor 放在 `monitoring` namespace 並用 `namespaceSelector` 選 `cilium` 裡的 Service；`monitoring` 要先存在；scrape interval 為 1 分鐘，scrape timeout 用 Prometheus 預設的 10 秒）（還沒有 Prometheus 的話再加 repo 根目錄的 `deploy/prometheus.yaml`）。scrape 設定要開 `honor_labels: true`，不然 metric 的 `namespace`（identity 所屬的 namespace）會被 exporter Pod 自己的 `cilium` 蓋掉。
 
 ## 疑難排解
 
