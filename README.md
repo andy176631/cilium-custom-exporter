@@ -1,6 +1,6 @@
 # cilium-custom-exporter
 
-Cilium（1.13 / 1.14）的自訂 Prometheus exporter，分成兩個獨立的程式，各自有自己的 Go module、Dockerfile 和部署 YAML：
+Cilium 的自訂 Prometheus exporter（node exporter 支援 1.13 / 1.14 / 1.16，cluster exporter 支援 1.13 / 1.14），分成兩個獨立的程式，各自有自己的 Go module、Dockerfile 和部署 YAML：
 
 | 目錄 | 部署方式 | 資料來源 | 匯出內容 |
 |---|---|---|---|
