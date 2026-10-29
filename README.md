@@ -41,17 +41,31 @@ image tag 要符合 Docker tag 的規則（英數字、`_`、`.`、`-`，最多 
 
 ### Harbor 清單
 
-要推到哪些 Harbor 寫在 [`ci/harbor-registries.txt`](ci/harbor-registries.txt)，一行一個 `<harbor host>/<project>`，image 會推到每一個位置：
+build server 要推到哪些 Harbor 寫在 [`ci/harbor-registries.txt`](ci/harbor-registries.txt)，一行一個 `<harbor host>/<project>`，image 會推到每一個位置：
 
 ```
 harbor-a.example.com/cilium
 harbor-b.example.com/cilium
 ```
 
-### Runner 需求
+### Build server（透過 SSH）
 
-- 已安裝 docker 的 runner（例如 shell executor），而且已經對清單上的每個 Harbor 執行過 `docker login`。CI 不會處理帳密。
-- runner 的 tags 要和 `.gitlab-ci.yml` 中 `default.tags` 的值一致（預設是 `harbor`）。
+Runner 本身不會 build。它會用 SSH 把該 exporter 的原始碼複製到 build server 的 `/tmp/gitlab-build/` 底下，在那台機器上執行 [`ci/remote-build.sh`](ci/remote-build.sh) 做 `docker build`，再 push 到每個 Harbor。完成後會刪除暫存目錄和本機 image。
+
+- **Build server**：要有 docker，而且已經對清單上的每個 Harbor 執行過 `docker login`。SSH 使用者要能執行 docker。
+- **Runner**：要有 `git`、`ssh`、`tar`（例如 shell executor），並且連得到 build server。runner 的 tags 要和 `.gitlab-ci.yml` 中 `default.tags` 的值一致（預設是 `harbor`）。
+
+連線資訊放在 GitLab **Settings → CI/CD → Variables**：
+
+| 變數 | 必填 | 內容 |
+|---|---|---|
+| `BUILD_SERVER_HOST` | 是 | build server 的 IP 或 hostname |
+| `BUILD_SERVER_SSH_KEY` | 是 | SSH private key。建議類型選 **File**，也可以是一般 Variable |
+| `BUILD_SERVER_USER` | 否 | SSH 使用者，預設 `root` |
+| `BUILD_SERVER_PORT` | 否 | SSH port，預設 `22` |
+| `BUILD_SERVER_KNOWN_HOSTS` | 否 | build server 的 known_hosts 內容（`ssh-keyscan <ip>` 的輸出）。有設定就嚴格檢查 host key；沒設定則第一次連線時直接接受 |
+
+變數若設成 Protected，要到 **Settings → Repository → Protected tags** 把 `node-exporter/*`、`cluster-exporter/*` 設為 protected，否則 tag pipeline 讀不到這些變數。
 
 ### 發版
 
