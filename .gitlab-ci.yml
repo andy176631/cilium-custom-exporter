@@ -1,0 +1,41 @@
+# Tag-driven image build and push. The tag prefix picks the exporter and the
+# rest of the tag is the image tag:
+#
+#   node-exporter/v1.2.0     -> cilium-custom-node-exporter:v1.2.0
+#   cluster-exporter/v1.0.0  -> cilium-custom-cluster-exporter:v1.0.0
+#
+# The runner does not build anything itself: it copies the source to a build
+# server over SSH, which builds the image and pushes it to every Harbor listed
+# in ci/harbor-registries.txt. The build server must have docker and already
+# be logged in to those Harbors. Its address and SSH key come from CI/CD
+# variables (see ci/ssh-build.sh).
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^(node|cluster)-exporter\/[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/
+
+default:
+  # Must match the tags of the runner that can reach the build server.
+  tags:
+    - harbor
+
+variables:
+  HARBOR_LIST_FILE: ci/harbor-registries.txt
+
+.build-push:
+  script:
+    - sh ci/ssh-build.sh "$COMPONENT" "${CI_COMMIT_TAG#*/}"
+
+node-exporter:
+  extends: .build-push
+  variables:
+    COMPONENT: cilium-custom-node-exporter
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^node-exporter\//
+
+cluster-exporter:
+  extends: .build-push
+  variables:
+    COMPONENT: cilium-custom-cluster-exporter
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^cluster-exporter\//
