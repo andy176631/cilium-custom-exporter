@@ -28,6 +28,7 @@ func main() {
 		nodeName        = flag.String("node-name", os.Getenv("NODE_NAME"), "Kubernetes node name. Defaults to $NODE_NAME, then the hostname.")
 		cacheTTL        = flag.Duration("endpoint-cache-ttl", 30*time.Second, "How long to reuse the endpoint list from cilium-agent. A new endpoint ID always triggers a refresh.")
 		apiTimeout      = flag.Duration("cilium-api-timeout", 5*time.Second, "Timeout for requests to the cilium-agent API.")
+		minUsage        = flag.Float64("entries-min-usage", 0.6, "Only export cilium_policy_map_entries for maps whose entries are at least this fraction of max_entries (0 to 1). 0 exports every map.")
 	)
 	flag.Parse()
 
@@ -35,6 +36,10 @@ func main() {
 
 	if *collectInterval <= 0 {
 		slog.Error("--collect-interval must be positive", "value", *collectInterval)
+		os.Exit(1)
+	}
+	if *minUsage < 0 || *minUsage > 1 {
+		slog.Error("--entries-min-usage must be between 0 and 1", "value", *minUsage)
 		os.Exit(1)
 	}
 	if *nodeName == "" {
@@ -47,7 +52,7 @@ func main() {
 	}
 
 	endpoints := &endpointCache{client: newCiliumClient(*socket), ttl: *cacheTTL}
-	collector := newPolicyMapCollector(*nodeName, *mapDir, endpoints, *apiTimeout)
+	collector := newPolicyMapCollector(*nodeName, *mapDir, endpoints, *apiTimeout, *minUsage)
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),
@@ -78,7 +83,7 @@ func main() {
 	collector.refresh(ctx)
 	go collector.run(ctx, *collectInterval)
 
-	slog.Info("Serving metrics", "addr", *listenAddr, "node", *nodeName, "collect_interval", *collectInterval, "bpf_map_dir", *mapDir, "cilium_socket", *socket)
+	slog.Info("Serving metrics", "addr", *listenAddr, "node", *nodeName, "collect_interval", *collectInterval, "bpf_map_dir", *mapDir, "cilium_socket", *socket, "entries_min_usage", *minUsage)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("HTTP server failed", "err", err)
 		os.Exit(1)

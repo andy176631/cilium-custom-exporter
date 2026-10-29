@@ -188,7 +188,7 @@ func TestCollector(t *testing.T) {
 	sock := serveFakeAgent(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(endpointsJSON))
 	})
-	c := newPolicyMapCollector("node-a", mapDir, &endpointCache{client: newCiliumClient(sock)}, 5*time.Second)
+	c := newPolicyMapCollector("node-a", mapDir, &endpointCache{client: newCiliumClient(sock)}, 5*time.Second, 0)
 	reg := prometheus.NewPedanticRegistry()
 	reg.MustRegister(c)
 
@@ -196,7 +196,7 @@ func TestCollector(t *testing.T) {
 	c.refresh(context.Background())
 
 	want := `
-# HELP cilium_policy_map_entries Number of entries in the endpoint's policy BPF map.
+# HELP cilium_policy_map_entries Number of entries in the endpoint's policy BPF map. Only exported for maps at least --entries-min-usage full.
 # TYPE cilium_policy_map_entries gauge
 cilium_policy_map_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="node-a",pod=""} 5
 cilium_policy_map_entries{endpoint_id="3000",endpoint_type="unknown",namespace="",node="node-a",pod=""} 2

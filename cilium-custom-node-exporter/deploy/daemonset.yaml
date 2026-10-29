@@ -52,6 +52,9 @@ spec:
             - --collect-interval=30s
             - --bpf-map-dir=/sys/fs/bpf/tc/globals
             - --cilium-socket=/var/run/cilium/cilium.sock
+            # Only maps at least 60% full get a cilium_policy_map_entries
+            # series. 0 exports every map.
+            - --entries-min-usage=0.6
           env:
             - name: NODE_NAME
               valueFrom:

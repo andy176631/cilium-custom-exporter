@@ -15,12 +15,20 @@ import (
 var (
 	entriesDesc = prometheus.NewDesc(
 		"cilium_policy_map_entries",
-		"Number of entries in the endpoint's policy BPF map.",
+		"Number of entries in the endpoint's policy BPF map. Only exported for maps at least --entries-min-usage full.",
 		[]string{"node", "namespace", "pod", "endpoint_id", "endpoint_type"}, nil)
 	maxEntriesDesc = prometheus.NewDesc(
 		"cilium_policy_map_max_entries",
 		"Maximum number of entries a policy BPF map can hold (bpf-policy-map-max). Every endpoint's map has the same size, so this has no labels.",
 		nil, nil)
+	policyMapsDesc = prometheus.NewDesc(
+		"cilium_policy_maps",
+		"Number of endpoint policy BPF maps read on the node, whether or not their entries are exported.",
+		[]string{"node"}, nil)
+	policyMapsOverDesc = prometheus.NewDesc(
+		"cilium_policy_maps_over_usage_threshold",
+		"Number of endpoint policy BPF maps on the node at least --entries-min-usage full, i.e. those exported in cilium_policy_map_entries.",
+		[]string{"node"}, nil)
 	apiUpDesc = prometheus.NewDesc(
 		"cilium_custom_node_exporter_cilium_api_up",
 		"Whether the endpoint list from the cilium-agent API is current (1) or the agent could not be reached (0).",
@@ -43,6 +51,9 @@ type policyMapCollector struct {
 	mapDir     string
 	endpoints  *endpointCache
 	apiTimeout time.Duration
+	// minUsage is the fraction of max_entries a map must reach before its
+	// entry count is exported. 0 exports every map.
+	minUsage float64
 
 	errors *prometheus.CounterVec
 	last   atomic.Pointer[snapshot]
@@ -61,9 +72,10 @@ type mapSample struct {
 	endpointID uint16
 	endpoint   endpointInfo
 	entries    int
+	maxEntries uint32
 }
 
-func newPolicyMapCollector(node, mapDir string, endpoints *endpointCache, apiTimeout time.Duration) *policyMapCollector {
+func newPolicyMapCollector(node, mapDir string, endpoints *endpointCache, apiTimeout time.Duration, minUsage float64) *policyMapCollector {
 	errs := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name:        "cilium_custom_node_exporter_errors_total",
 		Help:        "Errors while collecting, by stage (list_maps, read_map, cilium_api).",
@@ -77,6 +89,7 @@ func newPolicyMapCollector(node, mapDir string, endpoints *endpointCache, apiTim
 		mapDir:     mapDir,
 		endpoints:  endpoints,
 		apiTimeout: apiTimeout,
+		minUsage:   minUsage,
 		errors:     errs,
 	}
 }
@@ -132,7 +145,7 @@ func (c *policyMapCollector) refresh(ctx context.Context) {
 		if !ok {
 			ep = endpointInfo{Type: "unknown"}
 		}
-		s.maps = append(s.maps, mapSample{endpointID: pm.EndpointID, endpoint: ep, entries: stats.Entries})
+		s.maps = append(s.maps, mapSample{endpointID: pm.EndpointID, endpoint: ep, entries: stats.Entries, maxEntries: stats.MaxEntries})
 		s.maxEntries = max(s.maxEntries, stats.MaxEntries)
 	}
 	s.duration = time.Since(start)
@@ -143,6 +156,8 @@ func (c *policyMapCollector) refresh(ctx context.Context) {
 func (c *policyMapCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- entriesDesc
 	ch <- maxEntriesDesc
+	ch <- policyMapsDesc
+	ch <- policyMapsOverDesc
 	ch <- apiUpDesc
 	ch <- durationDesc
 	ch <- lastCollectDesc
@@ -158,10 +173,17 @@ func (c *policyMapCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
+	over := 0
 	for _, m := range s.maps {
+		if !c.overThreshold(m) {
+			continue
+		}
+		over++
 		ch <- prometheus.MustNewConstMetric(entriesDesc, prometheus.GaugeValue, float64(m.entries),
 			c.node, m.endpoint.Namespace, m.endpoint.Pod, strconv.Itoa(int(m.endpointID)), m.endpoint.Type)
 	}
+	ch <- prometheus.MustNewConstMetric(policyMapsDesc, prometheus.GaugeValue, float64(len(s.maps)), c.node)
+	ch <- prometheus.MustNewConstMetric(policyMapsOverDesc, prometheus.GaugeValue, float64(over), c.node)
 	if s.maxEntries > 0 {
 		ch <- prometheus.MustNewConstMetric(maxEntriesDesc, prometheus.GaugeValue, float64(s.maxEntries))
 	}
@@ -172,4 +194,11 @@ func (c *policyMapCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(apiUpDesc, prometheus.GaugeValue, apiUp, c.node)
 	ch <- prometheus.MustNewConstMetric(durationDesc, prometheus.GaugeValue, s.duration.Seconds(), c.node)
 	ch <- prometheus.MustNewConstMetric(lastCollectDesc, prometheus.GaugeValue, float64(s.finishedAt.UnixNano())/1e9, c.node)
+}
+
+// overThreshold reports whether a map is full enough for its entry count to be
+// exported. Only maps near their limit matter for alerting, and leaving the
+// rest out keeps one series per endpoint off Prometheus.
+func (c *policyMapCollector) overThreshold(m mapSample) bool {
+	return float64(m.entries) >= c.minUsage*float64(m.maxEntries)
 }

@@ -60,8 +60,12 @@ metadata:
 spec:
   replicas: 1
   serviceAccountName: cilium-custom-exporter-prometheus
-  # The namespace selectors are left unset, so only ServiceMonitors and rules
-  # in this namespace are considered.
+  # The exporters' ServiceMonitors are in the monitoring namespace. The rule
+  # namespace selector is left unset, so only PrometheusRules in this
+  # namespace are considered.
+  serviceMonitorNamespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: monitoring
   serviceMonitorSelector:
     matchLabels:
       app.kubernetes.io/part-of: cilium-custom-exporter

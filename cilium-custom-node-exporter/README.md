@@ -1,6 +1,6 @@
 # cilium-custom-node-exporter
 
-以 DaemonSet 跑在每個節點上的 Prometheus exporter，匯出該節點上**每一個 Cilium endpoint policy BPF map 的 entry 數量**，每筆都帶 `node`、`namespace`、`pod` label。用來在 policy map 滿之前發現問題（map 滿了以後，新的 policy 規則會寫不進去，該允許的流量可能被擋）。
+以 DaemonSet 跑在每個節點上的 Prometheus exporter，匯出該節點上**每一個 Cilium endpoint policy BPF map 的 entry 數量**，每筆都帶 `node`、`namespace`、`pod` label。為了控制 series 數量，**只有使用率達到門檻（預設 60%）的 map 才會匯出 entry 數**。用來在 policy map 滿之前發現問題（map 滿了以後，新的 policy 規則會寫不進去，該允許的流量可能被擋）。
 
 - 支援版本：Cilium 1.13、1.14、1.16（1.16.7 已實測，程式不需修改）
 - 環境：amd64、Linux kernel 6.2（Ubuntu 22.04）
@@ -30,6 +30,8 @@ exporter 在背景每 `--collect-interval`（預設 30 秒）做一輪下面的�
    - 不是 Pod 的 endpoint（host、health、ingress 等）用它的 reserved identity 當 `endpoint_type`，`pod`、`namespace` 是空字串。
    - cilium-agent 重啟或連不上時，沿用最後一次成功的清單，map 數量照樣匯出，同時 `cilium_custom_node_exporter_cilium_api_up` 變成 0。查不到的 endpoint 的 `endpoint_type` 是 `unknown`。
 4. **更新快照**：整輪結果原子地替換記憶體裡的快照。第一輪在開始服務 HTTP 之前就先跑完，所以第一次 scrape 就有資料。
+5. **依使用率過濾**：scrape 時，只有 `entries / max_entries` 達到 `--entries-min-usage`（預設 `0.6`，也就是 60%）的 map 會輸出 `cilium_policy_map_entries`。其餘的 map 仍然有讀取，只是不輸出，所以一般節點上大部分 endpoint 不會產生 series。節點上總共讀了幾個 map、有幾個達到門檻，分別看 `cilium_policy_maps` 和 `cilium_policy_maps_over_usage_threshold`。設成 `0` 則每個 map 都輸出。
+   - 某個 map 的使用率掉到門檻以下時，它的 series 會從下一次 scrape 消失；Prometheus 會把它標成 stale，不會一直停在最後的數字。
 
 效能參考：一個節點 100 個 endpoint、每個 map 1000 筆時，一輪約 28 ms（1.13）、117 ms（1.14）。
 
@@ -37,8 +39,10 @@ exporter 在背景每 `--collect-interval`（預設 30 秒）做一輪下面的�
 
 | Metric | 類型 | Label | 說明 |
 |---|---|---|---|
-| `cilium_policy_map_entries` | gauge | `node`, `namespace`, `pod`, `endpoint_id`, `endpoint_type` | 該 endpoint policy map 目前的 entry 數 |
+| `cilium_policy_map_entries` | gauge | `node`, `namespace`, `pod`, `endpoint_id`, `endpoint_type` | 該 endpoint policy map 目前的 entry 數。只輸出使用率達到 `--entries-min-usage` 的 map |
 | `cilium_policy_map_max_entries` | gauge | （無） | policy map 的上限（Cilium 的 `bpf-policy-map-max`，預設 16384）。每個 endpoint 的 map 大小相同，所以只有一筆；讀不到任何 map 時不匯出 |
+| `cilium_policy_maps` | gauge | `node` | 這個節點上讀到的 policy map 總數（不論有沒有達到門檻） |
+| `cilium_policy_maps_over_usage_threshold` | gauge | `node` | 這個節點上使用率達到 `--entries-min-usage` 的 map 數，也就是 `cilium_policy_map_entries` 的筆數 |
 | `cilium_custom_node_exporter_cilium_api_up` | gauge | `node` | 最近一輪向 cilium-agent 取 endpoint 清單是否成功（1 / 0） |
 | `cilium_custom_node_exporter_errors_total` | counter | `node`, `stage` | 收集錯誤次數。`stage`：`list_maps`（列 map 目錄失敗）、`read_map`（讀某個 map 失敗）、`cilium_api`（呼叫 cilium-agent 失敗） |
 | `cilium_custom_node_exporter_collect_duration_seconds` | gauge | `node` | 最近一輪花的時間 |
@@ -54,12 +58,14 @@ exporter 在背景每 `--collect-interval`（預設 30 秒）做一輪下面的�
 | `endpoint_id` | Cilium endpoint ID（map 檔名 `cilium_policy_XXXXX` 的數字） |
 | `endpoint_type` | Pod 為 `pod`；其他用 reserved identity，例如 `host`、`health`、`ingress`；cilium-agent 查不到的為 `unknown` |
 
-範例輸出：
+範例輸出（門檻 0.6，max_entries 16384，所以只有 entry 數 ≥ 9831 的 map 會出現）：
 
 ```
-cilium_policy_map_entries{endpoint_id="812",endpoint_type="pod",namespace="default",node="worker-1",pod="nginx-7c5ddbdf54-x2x7q"} 37
-cilium_policy_map_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="worker-1",pod=""} 9
+cilium_policy_map_entries{endpoint_id="812",endpoint_type="pod",namespace="default",node="worker-1",pod="nginx-7c5ddbdf54-x2x7q"} 11520
+cilium_policy_map_entries{endpoint_id="1504",endpoint_type="host",namespace="",node="worker-1",pod=""} 10240
 cilium_policy_map_max_entries 16384
+cilium_policy_maps{node="worker-1"} 42
+cilium_policy_maps_over_usage_threshold{node="worker-1"} 2
 cilium_custom_node_exporter_cilium_api_up{node="worker-1"} 1
 ```
 
@@ -74,8 +80,8 @@ cilium_policy_map_entries / on() group_left cluster:cilium_policy_map_max_entrie
 # 使用率超過 90%
 cilium_policy_map_entries / on() group_left cluster:cilium_policy_map_max_entries:max > 0.9
 
-# entry 數最多的 10 個 Pod
-topk(10, cilium_policy_map_entries{endpoint_type="pod"})
+# 每個節點有幾個 map 達到門檻
+cilium_policy_maps_over_usage_threshold
 ```
 
 沒有套用 recording rule 的話，把 `cluster:cilium_policy_map_max_entries:max` 換成 `max(cilium_policy_map_max_entries)`。
@@ -91,6 +97,7 @@ topk(10, cilium_policy_map_entries{endpoint_type="pod"})
 | `--node-name` | string | `$NODE_NAME`，沒有則用 hostname | `node` label 的值 |
 | `--endpoint-cache-ttl` | duration | `30s` | endpoint 清單的快取時間；出現新的 endpoint ID 時不論 TTL 都會重抓 |
 | `--cilium-api-timeout` | duration | `5s` | 每次呼叫 cilium-agent API 的 timeout |
+| `--entries-min-usage` | float | `0.6` | 只輸出 `entries / max_entries` 達到這個比例的 map 的 `cilium_policy_map_entries`，範圍 0 到 1。`0` 表示全部輸出 |
 
 duration 的格式是 Go 的 `time.ParseDuration`，例如 `15s`、`1m`。
 
@@ -119,13 +126,13 @@ DaemonSet 的重點：
 - 不使用 ServiceAccount token，不需要 RBAC。
 - `cilium` namespace 要先存在，YAML 不會建立或刪除它；有開 Pod Security Admission 的話要允許 privileged Pod。
 
-接 Prometheus：Pod 帶有 `prometheus.io/scrape` annotation；用 Prometheus Operator 的話套用 `deploy/servicemonitor.yaml` 和 `deploy/prometheusrule.yaml`（還沒有 Prometheus 的話再加 repo 根目錄的 `deploy/prometheus.yaml`）。scrape 設定要開 `honor_labels: true`，不然 `namespace`、`pod` 會被 exporter 自己的 Pod 蓋掉。
+接 Prometheus：Pod 帶有 `prometheus.io/scrape` annotation；用 Prometheus Operator 的話套用 `deploy/servicemonitor.yaml` 和 `deploy/prometheusrule.yaml`（Service 放在 `cilium`，ServiceMonitor 放在 `monitoring` namespace 並用 `namespaceSelector` 選 `cilium` 裡的 Service；`monitoring` 要先存在）（還沒有 Prometheus 的話再加 repo 根目錄的 `deploy/prometheus.yaml`）。scrape 設定要開 `honor_labels: true`，不然 `namespace`、`pod` 會被 exporter 自己的 Pod 蓋掉。
 
 ## 疑難排解
 
 | 現象 | 可能原因 |
 |---|---|
-| 沒有任何 `cilium_policy_map_entries` | cilium-agent 還沒起來，或 bpffs 不在 `/sys/fs/bpf`；看 `errors_total{stage="list_maps"}` 和 log |
+| 沒有任何 `cilium_policy_map_entries` | 沒有 map 達到 `--entries-min-usage`（看 `cilium_policy_maps` 是否大於 0）；或 cilium-agent 還沒起來，或 bpffs 不在 `/sys/fs/bpf`；看 `errors_total{stage="list_maps"}` 和 log |
 | `endpoint_type="unknown"`、`pod` 是空的 | cilium-agent 查不到這個 endpoint；檢查 `cilium_api_up` |
 | `cilium_api_up` 為 0 | 連不上 `/var/run/cilium/cilium.sock`，看 log |
 | `errors_total{stage="read_map"}` 持續增加 | 權限不足（確認 `privileged: true`）或 map 格式不符 |
