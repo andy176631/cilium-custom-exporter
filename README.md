@@ -1,6 +1,6 @@
 # cilium-custom-exporter
 
-Cilium（1.13 / 1.14）的自訂 Prometheus exporter，分成兩個獨立的程式，各自有自己的 Go module、Dockerfile 和部署 YAML：
+Cilium 的自訂 Prometheus exporter（支援 Cilium 1.13 / 1.14 / 1.16；cluster exporter 需要 identity allocation mode 為 `crd`），分成兩個獨立的程式，各自有自己的 Go module、Dockerfile 和部署 YAML：
 
 | 目錄 | 部署方式 | 資料來源 | 匯出內容 |
 |---|---|---|---|
@@ -9,7 +9,7 @@ Cilium（1.13 / 1.14）的自訂 Prometheus exporter，分成兩個獨立的程�
 
 `cilium-custom-node-exporter` 就是原本的 `cilium-custom-exporter`，改名後移到子目錄。它自己的 metric（`cilium_custom_exporter_*`）也一起改成 `cilium_custom_node_exporter_*`，`cilium_policy_map_*` 不變。
 
-兩個 exporter 的資源都放在 `cilium` namespace（要先存在，YAML 不會建立或刪除它），而且都帶 `app.kubernetes.io/part-of: cilium-custom-exporter` label。
+兩個 exporter 的資源都放在 `cilium` namespace（要先存在，YAML 不會建立或刪除它），只有 ServiceMonitor 放在 `monitoring` namespace，而且都帶 `app.kubernetes.io/part-of: cilium-custom-exporter` label。
 
 ## 快速部署
 

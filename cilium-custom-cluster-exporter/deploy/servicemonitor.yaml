@@ -1,4 +1,6 @@
 # Optional: only for clusters running the Prometheus Operator.
+# The Service goes into cilium next to the exporter pods; the ServiceMonitor
+# goes into monitoring, which must already exist.
 # If Prometheus discovers pods through the prometheus.io/* annotations in
 # deployment.yaml, you do not need this file.
 apiVersion: v1
@@ -21,17 +23,21 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: cilium-custom-cluster-exporter
-  namespace: cilium
+  namespace: monitoring
   labels:
     app.kubernetes.io/name: cilium-custom-cluster-exporter
     app.kubernetes.io/part-of: cilium-custom-exporter
 spec:
+  # The ServiceMonitor lives in monitoring; the exporter's Service is in cilium.
+  namespaceSelector:
+    matchNames:
+      - cilium
   selector:
     matchLabels:
       app.kubernetes.io/name: cilium-custom-cluster-exporter
   endpoints:
     - port: metrics
-      interval: 30s
+      interval: 1m
       # Keep the exporter's namespace label (the identity's namespace) instead
       # of renaming it to exported_namespace.
       honorLabels: true

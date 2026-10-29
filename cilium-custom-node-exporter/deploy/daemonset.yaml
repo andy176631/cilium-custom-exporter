@@ -1,5 +1,5 @@
 # cilium-custom-node-exporter: one pod per node, exporting the entry count of every
-# Cilium endpoint policy BPF map (Cilium 1.13 / 1.14).
+# Cilium endpoint policy BPF map (Cilium 1.13 / 1.14 / 1.16).
 #
 # Everything in deploy/ goes into the cilium namespace, next to Cilium. The
 # namespace is not created here, so deleting these files never deletes it. If
@@ -52,6 +52,9 @@ spec:
             - --collect-interval=30s
             - --bpf-map-dir=/sys/fs/bpf/tc/globals
             - --cilium-socket=/var/run/cilium/cilium.sock
+            # Only maps at least 60% full get a cilium_policy_map_entries
+            # series. 0 exports every map.
+            - --entries-min-usage=0.6
           env:
             - name: NODE_NAME
               valueFrom:
