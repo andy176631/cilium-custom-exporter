@@ -4,8 +4,8 @@
 #   node-exporter/v1.2.0     -> cilium-custom-node-exporter:v1.2.0
 #   cluster-exporter/v1.0.0  -> cilium-custom-cluster-exporter:v1.0.0
 #
-# All settings (Harbor list, Dockerfile FROM images, job image, runner tags)
-# are in ci/ci-config.yml. The job does not build anything itself: it copies
+# All settings (Harbor list, Dockerfile FROM images, job image) are in
+# ci/ci-config.yml. The job does not build anything itself: it copies
 # the source to a build server over SSH, which builds the image and pushes it
 # to every listed Harbor. The build server must have docker and already
 # be logged in to those Harbors. Its address and SSH key come from CI/CD
