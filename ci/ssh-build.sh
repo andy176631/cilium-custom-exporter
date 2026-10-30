@@ -23,15 +23,16 @@ component=$1 tag=$2
 : "${BUILD_SERVER_SSH_KEY:?set CI/CD variable BUILD_SERVER_SSH_KEY}"
 user=${BUILD_SERVER_USER:-root}
 port=${BUILD_SERVER_PORT:-22}
-list=${HARBOR_LIST_FILE:-ci/harbor-registries.txt}
-
+# HARBOR_REGISTRIES (ci/ci-config.yml): one <harbor host>/<project> per line.
 repos=""
 while read -r repo _ || [ -n "$repo" ]; do
   case "$repo" in '' | '#'*) continue ;; esac
   repos="$repos $repo"
-done < "$list"
+done <<EOF
+${HARBOR_REGISTRIES:-}
+EOF
 if [ -z "$repos" ]; then
-  echo "no Harbor listed in $list" >&2
+  echo "HARBOR_REGISTRIES in ci/ci-config.yml lists no Harbor" >&2
   exit 1
 fi
 
