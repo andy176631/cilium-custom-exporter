@@ -39,18 +39,30 @@ kubectl apply -f deploy/prometheus.yaml
 
 image tag 要符合 Docker tag 的規則（英數字、`_`、`.`、`-`，最多 128 字元）。其他 tag 和一般的 push 都不會執行任何 job。
 
-### Harbor 清單
+### 設定檔
 
-build server 要推到哪些 Harbor 寫在 [`ci/harbor-registries.txt`](ci/harbor-registries.txt)，一行一個 `<harbor host>/<project>`，image 會推到每一個位置：
+所有設定都集中在 [`ci/ci-config.yml`](ci/ci-config.yml)，`.gitlab-ci.yml` 不用改：
 
+```yaml
+default:
+  tags:                      # runner 的 tags
+    - harbor
+
+variables:
+  HARBOR_REGISTRIES: |       # Harbor 位置，一行一個 <harbor host>/<project>
+    harbor-a.example.com/cilium
+    harbor-b.example.com/cilium
+  CI_JOB_IMAGE: alpine:3.20  # 執行 job 的 container image
+  BUILDER_IMAGE: ""          # Dockerfile 的 FROM（編譯用），留空用預設值
+  NODE_EXPORTER_BASE_IMAGE: ""
+  CLUSTER_EXPORTER_BASE_IMAGE: ""
 ```
-harbor-a.example.com/cilium
-harbor-b.example.com/cilium
-```
+
+image 會推到 `HARBOR_REGISTRIES` 列出的每一個位置。各項目的說明見下面幾節。
 
 ### Dockerfile 的 FROM image
 
-兩個 Dockerfile 的 FROM 都改成 build arg，可以從外部指定，例如換成內部 Harbor 上的 mirror。在 CI 中設定在 [`ci/ci-config.yml`](ci/ci-config.yml)，留空就使用 Dockerfile 裡的預設值：
+兩個 Dockerfile 的 FROM 都改成 build arg，可以從外部指定，例如換成內部 Harbor 上的 mirror。在 CI 中設定在 `ci/ci-config.yml`，留空就使用 Dockerfile 裡的預設值：
 
 | 設定 | 對應的 build arg | 預設值 |
 |---|---|---|
@@ -65,8 +77,8 @@ harbor-b.example.com/cilium
 Job 跑在 container 裡，本身不會 build。它會用 `tar` 經過 SSH 把該 exporter 的原始碼複製到 build server 的 `/tmp/gitlab-build/` 底下，在那台機器上執行 [`ci/remote-build.sh`](ci/remote-build.sh) 做 `docker build`，再 push 到每個 Harbor。完成後會刪除暫存目錄和本機 image。
 
 - **Build server**：要有 docker，而且已經對清單上的每個 Harbor 執行過 `docker login`。SSH 使用者要能執行 docker。
-- **Runner**：使用 docker（或 kubernetes）executor，runner 主機上不需要 `git` 或 `ssh`。job 的 container 要連得到 build server。runner 的 tags 要和 `.gitlab-ci.yml` 中 `default.tags` 的值一致（預設是 `harbor`）。
-- **Job container image**：設定在 [`ci/ci-config.yml`](ci/ci-config.yml) 的 `CI_JOB_IMAGE`（預設 `alpine:3.20`），需要有 `sh`、`tar`、`ssh`。image 裡沒有 `ssh` 時，job 會用 `apk add openssh-client` 安裝，這需要能連到 Alpine 套件庫；runner 連不到外網的話，請換成已經裝好 openssh-client 的內部 image。
+- **Runner**：使用 docker（或 kubernetes）executor，runner 主機上不需要 `git` 或 `ssh`。job 的 container 要連得到 build server。runner 的 tags 要和 `ci/ci-config.yml` 中 `default.tags` 的值一致（預設是 `harbor`）。
+- **Job container image**：設定在 `ci/ci-config.yml` 的 `CI_JOB_IMAGE`（預設 `alpine:3.20`），需要有 `sh`、`tar`、`ssh`。image 裡沒有 `ssh` 時，job 會用 `apk add openssh-client` 安裝，這需要能連到 Alpine 套件庫；runner 連不到外網的話，請換成已經裝好 openssh-client 的內部 image。
 
 連線資訊放在 GitLab **Settings → CI/CD → Variables**：
 

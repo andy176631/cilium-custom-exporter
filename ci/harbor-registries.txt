@@ -1,6 +1,0 @@
-# Harbor 位置，一行一個：<harbor host>/<project>
-# 推 tag 時，build server 會把 image 推到這裡列出的每一個位置，例如
-#   harbor-a.example.com/cilium/cilium-custom-node-exporter:v1.2.0
-# 空行和 # 開頭的行會被忽略。build server 要先登入這些 Harbor（docker login）。
-harbor-a.example.com/cilium
-harbor-b.example.com/cilium
