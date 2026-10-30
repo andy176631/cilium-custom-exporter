@@ -1,11 +1,6 @@
-# CI 的所有設定都在這個檔案：Harbor 位置、Dockerfile 的 FROM image、
-# job 的 container image，以及 runner tags。
+# CI 的所有設定都在這個檔案：Harbor 位置、Dockerfile 的 FROM image，
+# 以及 job 的 container image。
 # 密碼和 SSH key 不要寫在這裡，放在 GitLab CI/CD Variables。
-
-default:
-  # 要和能連到 build server 的 runner 的 tags 一致。
-  tags:
-    - harbor
 
 variables:
   # Harbor 位置，一行一個：<harbor host>/<project>
