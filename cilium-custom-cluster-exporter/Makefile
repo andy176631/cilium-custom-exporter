@@ -1,6 +1,8 @@
-# Override the Dockerfile FROM images, e.g. make image BUILDER_IMAGE=mirror/golang:1.24-bookworm
+# Override the Dockerfile FROM images and Go proxy, e.g.
+# make image BUILDER_IMAGE=mirror/golang:1.24-bookworm GOPROXY=https://goproxy.example.com,direct
 BUILDER_IMAGE ?=
 BASE_IMAGE ?=
+GOPROXY ?=
 IMAGE ?= registry.example.com/cilium-custom-cluster-exporter:0.1.0
 
 .PHONY: build test image push
@@ -15,7 +17,8 @@ test:
 image:
 	docker build -t $(IMAGE) \
 		$(if $(BUILDER_IMAGE),--build-arg BUILDER_IMAGE=$(BUILDER_IMAGE)) \
-		$(if $(BASE_IMAGE),--build-arg BASE_IMAGE=$(BASE_IMAGE)) .
+		$(if $(BASE_IMAGE),--build-arg BASE_IMAGE=$(BASE_IMAGE)) \
+		$(if $(GOPROXY),--build-arg GOPROXY=$(GOPROXY)) .
 
 push: image
 	docker push $(IMAGE)

@@ -52,6 +52,7 @@ variables:
   BUILDER_IMAGE: ""          # Dockerfile 的 FROM（編譯用），留空用預設值
   NODE_EXPORTER_BASE_IMAGE: ""
   CLUSTER_EXPORTER_BASE_IMAGE: ""
+  GOPROXY: ""                # Dockerfile 的 ENV GOPROXY，留空用預設值
 ```
 
 image 會推到 `HARBOR_REGISTRIES` 列出的每一個位置。各項目的說明見下面幾節。
@@ -65,8 +66,9 @@ image 會推到 `HARBOR_REGISTRIES` 列出的每一個位置。各項目的說�
 | `BUILDER_IMAGE`（兩個 exporter 共用） | `BUILDER_IMAGE` | `golang:1.24-bookworm` |
 | `NODE_EXPORTER_BASE_IMAGE` | node exporter 的 `BASE_IMAGE` | `gcr.io/distroless/static-debian12` |
 | `CLUSTER_EXPORTER_BASE_IMAGE` | cluster exporter 的 `BASE_IMAGE` | `gcr.io/distroless/static-debian12:nonroot` |
+| `GOPROXY`（兩個 exporter 共用） | `GOPROXY`（build stage 的 `ENV GOPROXY`） | `https://proxy.golang.org,direct` |
 
-在本機 build 也可以指定：`make image BUILDER_IMAGE=... BASE_IMAGE=...`，或 `docker build --build-arg BASE_IMAGE=... .`。node exporter 要讀 BPF map，需要以 root 執行，換 base image 時請選擇預設使用者是 root 的 image。
+在本機 build 也可以指定：`make image BUILDER_IMAGE=... BASE_IMAGE=... GOPROXY=...`，或 `docker build --build-arg BASE_IMAGE=... .`。node exporter 要讀 BPF map，需要以 root 執行，換 base image 時請選擇預設使用者是 root 的 image。
 
 ### Build server（透過 SSH）
 

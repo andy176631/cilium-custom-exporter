@@ -2,6 +2,9 @@ ARG BUILDER_IMAGE=golang:1.24-bookworm
 ARG BASE_IMAGE=gcr.io/distroless/static-debian12
 
 FROM ${BUILDER_IMAGE} AS build
+# Go module proxy for `go mod download`, e.g. https://goproxy.example.com,direct
+ARG GOPROXY=https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download

@@ -6,7 +6,7 @@
 #   remote-build.sh <context dir> <image name> <image tag> <harbor/project>...
 #
 # BUILDER_IMAGE and BASE_IMAGE, when set, override the Dockerfile's FROM
-# images.
+# images; GOPROXY, when set, overrides its Go module proxy.
 set -eu
 
 context=$1 name=$2 tag=$3
@@ -20,6 +20,9 @@ if [ -n "${BUILDER_IMAGE:-}" ]; then
 fi
 if [ -n "${BASE_IMAGE:-}" ]; then
   build_args="$build_args --build-arg BASE_IMAGE=$BASE_IMAGE"
+fi
+if [ -n "${GOPROXY:-}" ]; then
+  build_args="$build_args --build-arg GOPROXY=$GOPROXY"
 fi
 # shellcheck disable=SC2086
 docker build $build_args -t "$local_image" "$context"
