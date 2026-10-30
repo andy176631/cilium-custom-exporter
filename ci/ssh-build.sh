@@ -1,6 +1,7 @@
 #!/bin/sh
-# Runs on the GitLab runner: copies the component's source to the build server
-# over SSH and runs ci/remote-build.sh there.
+# Runs in the job container (CI_JOB_IMAGE, needs ssh and tar): copies the
+# component's source to the build server over SSH and runs ci/remote-build.sh
+# there.
 #
 #   ssh-build.sh <component dir> <image tag>
 #
@@ -12,6 +13,9 @@
 #   BUILD_SERVER_KNOWN_HOSTS  known_hosts line(s) for the build server
 #                             (optional; without it the host key is accepted
 #                             on first connect)
+#
+# BUILDER_IMAGE and BASE_IMAGE (from ci/ci-config.yml) are passed on to
+# override the Dockerfile's FROM images; empty keeps the Dockerfile default.
 set -eu
 
 component=$1 tag=$2
@@ -62,9 +66,10 @@ workdir="/tmp/gitlab-build/${CI_PROJECT_PATH_SLUG:-cilium-custom-exporter}-${CI_
 echo "build on $user@$BUILD_SERVER_HOST:$workdir"
 trap 'remote rm -rf "$workdir" || true; rm -rf "$tmp"' EXIT
 
-git archive --format=tar HEAD "$component" ci/remote-build.sh |
+tar -cf - "$component" ci/remote-build.sh |
   remote "mkdir -p '$workdir' && tar -x -C '$workdir'"
 
 # Tag and repos are safe to pass unquoted: the tag is checked by the
 # workflow rule and the Harbor list has no spaces per entry.
-remote sh "$workdir/ci/remote-build.sh" "$workdir/$component" "$component" "$tag" $repos
+remote BUILDER_IMAGE="'${BUILDER_IMAGE:-}'" BASE_IMAGE="'${BASE_IMAGE:-}'" \
+  sh "$workdir/ci/remote-build.sh" "$workdir/$component" "$component" "$tag" $repos

@@ -1,0 +1,17 @@
+# Job 執行環境設定。
+variables:
+  # 執行 job 的 container image，需要有 sh、tar 和 ssh。
+  # image 沒有 ssh 時，job 會嘗試用 apk 安裝 openssh-client（需要能連到
+  # Alpine 套件庫）。runner 連不到外網時，請換成已經裝好 openssh-client 的
+  # 內部 image，例如 harbor-a.example.com/library/alpine-ssh:3.20。
+  CI_JOB_IMAGE: alpine:3.20
+
+  # Dockerfile 的 FROM image。留空就用 Dockerfile 裡的預設值。
+  # BUILDER_IMAGE：編譯用的 Go image（兩個 exporter 共用），
+  #   預設 golang:1.24-bookworm
+  BUILDER_IMAGE: ""
+  # 執行用的 base image，兩個 exporter 分開設定：
+  #   node exporter 預設 gcr.io/distroless/static-debian12（以 root 執行）
+  #   cluster exporter 預設 gcr.io/distroless/static-debian12:nonroot
+  NODE_EXPORTER_BASE_IMAGE: ""
+  CLUSTER_EXPORTER_BASE_IMAGE: ""
