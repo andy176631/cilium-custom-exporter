@@ -13,6 +13,9 @@
 #   BUILD_SERVER_KNOWN_HOSTS  known_hosts line(s) for the build server
 #                             (optional; without it the host key is accepted
 #                             on first connect)
+#
+# BUILDER_IMAGE and BASE_IMAGE (from ci/ci-config.yml) are passed on to
+# override the Dockerfile's FROM images; empty keeps the Dockerfile default.
 set -eu
 
 component=$1 tag=$2
@@ -68,4 +71,5 @@ tar -cf - "$component" ci/remote-build.sh |
 
 # Tag and repos are safe to pass unquoted: the tag is checked by the
 # workflow rule and the Harbor list has no spaces per entry.
-remote sh "$workdir/ci/remote-build.sh" "$workdir/$component" "$component" "$tag" $repos
+remote BUILDER_IMAGE="'${BUILDER_IMAGE:-}'" BASE_IMAGE="'${BASE_IMAGE:-}'" \
+  sh "$workdir/ci/remote-build.sh" "$workdir/$component" "$component" "$tag" $repos

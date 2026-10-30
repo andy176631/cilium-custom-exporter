@@ -4,13 +4,25 @@
 # and already be logged in to those Harbors.
 #
 #   remote-build.sh <context dir> <image name> <image tag> <harbor/project>...
+#
+# BUILDER_IMAGE and BASE_IMAGE, when set, override the Dockerfile's FROM
+# images.
 set -eu
 
 context=$1 name=$2 tag=$3
 shift 3
 
 local_image="$name:$tag"
-docker build -t "$local_image" "$context"
+# Image references have no spaces, so the args can be split on whitespace.
+build_args=""
+if [ -n "${BUILDER_IMAGE:-}" ]; then
+  build_args="$build_args --build-arg BUILDER_IMAGE=$BUILDER_IMAGE"
+fi
+if [ -n "${BASE_IMAGE:-}" ]; then
+  build_args="$build_args --build-arg BASE_IMAGE=$BASE_IMAGE"
+fi
+# shellcheck disable=SC2086
+docker build $build_args -t "$local_image" "$context"
 trap 'docker rmi "$local_image" >/dev/null 2>&1 || true' EXIT
 
 for repo in "$@"; do

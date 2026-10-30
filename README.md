@@ -48,6 +48,18 @@ harbor-a.example.com/cilium
 harbor-b.example.com/cilium
 ```
 
+### Dockerfile 的 FROM image
+
+兩個 Dockerfile 的 FROM 都改成 build arg，可以從外部指定，例如換成內部 Harbor 上的 mirror。在 CI 中設定在 [`ci/ci-config.yml`](ci/ci-config.yml)，留空就使用 Dockerfile 裡的預設值：
+
+| 設定 | 對應的 build arg | 預設值 |
+|---|---|---|
+| `BUILDER_IMAGE`（兩個 exporter 共用） | `BUILDER_IMAGE` | `golang:1.24-bookworm` |
+| `NODE_EXPORTER_BASE_IMAGE` | node exporter 的 `BASE_IMAGE` | `gcr.io/distroless/static-debian12` |
+| `CLUSTER_EXPORTER_BASE_IMAGE` | cluster exporter 的 `BASE_IMAGE` | `gcr.io/distroless/static-debian12:nonroot` |
+
+在本機 build 也可以指定：`make image BUILDER_IMAGE=... BASE_IMAGE=...`，或 `docker build --build-arg BASE_IMAGE=... .`。node exporter 要讀 BPF map，需要以 root 執行，換 base image 時請選擇預設使用者是 root 的 image。
+
 ### Build server（透過 SSH）
 
 Job 跑在 container 裡，本身不會 build。它會用 `tar` 經過 SSH 把該 exporter 的原始碼複製到 build server 的 `/tmp/gitlab-build/` 底下，在那台機器上執行 [`ci/remote-build.sh`](ci/remote-build.sh) 做 `docker build`，再 push 到每個 Harbor。完成後會刪除暫存目錄和本機 image。
