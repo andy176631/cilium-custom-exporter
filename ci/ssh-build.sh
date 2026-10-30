@@ -14,8 +14,9 @@
 #                             (optional; without it the host key is accepted
 #                             on first connect)
 #
-# BUILDER_IMAGE and BASE_IMAGE (from ci/ci-config.yml) are passed on to
-# override the Dockerfile's FROM images; empty keeps the Dockerfile default.
+# BUILDER_IMAGE, BASE_IMAGE and GOPROXY (from ci/ci-config.yml) are passed on
+# to override the Dockerfile's FROM images and Go proxy; empty keeps the
+# Dockerfile default.
 set -eu
 
 component=$1 tag=$2
@@ -73,4 +74,5 @@ tar -cf - "$component" ci/remote-build.sh |
 # Tag and repos are safe to pass unquoted: the tag is checked by the
 # workflow rule and the Harbor list has no spaces per entry.
 remote BUILDER_IMAGE="'${BUILDER_IMAGE:-}'" BASE_IMAGE="'${BASE_IMAGE:-}'" \
+  GOPROXY="'${GOPROXY:-}'" \
   sh "$workdir/ci/remote-build.sh" "$workdir/$component" "$component" "$tag" $repos

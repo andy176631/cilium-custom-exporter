@@ -26,3 +26,8 @@ variables:
   #   cluster exporter 預設 gcr.io/distroless/static-debian12:nonroot
   NODE_EXPORTER_BASE_IMAGE: ""
   CLUSTER_EXPORTER_BASE_IMAGE: ""
+
+  # Dockerfile 中 ENV GOPROXY 的值，用於 go mod download（兩個 exporter 共用）。
+  # 可以用逗號串多個，例如 https://goproxy.example.com,direct。
+  # 留空就用 Dockerfile 的預設值 https://proxy.golang.org,direct。
+  GOPROXY: ""
