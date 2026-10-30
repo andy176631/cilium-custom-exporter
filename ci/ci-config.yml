@@ -1,0 +1,7 @@
+# Job 執行環境設定。
+variables:
+  # 執行 job 的 container image，需要有 sh、tar 和 ssh。
+  # image 沒有 ssh 時，job 會嘗試用 apk 安裝 openssh-client（需要能連到
+  # Alpine 套件庫）。runner 連不到外網時，請換成已經裝好 openssh-client 的
+  # 內部 image，例如 harbor-a.example.com/library/alpine-ssh:3.20。
+  CI_JOB_IMAGE: alpine:3.20

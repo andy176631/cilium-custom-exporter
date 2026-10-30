@@ -1,6 +1,7 @@
 #!/bin/sh
-# Runs on the GitLab runner: copies the component's source to the build server
-# over SSH and runs ci/remote-build.sh there.
+# Runs in the job container (CI_JOB_IMAGE, needs ssh and tar): copies the
+# component's source to the build server over SSH and runs ci/remote-build.sh
+# there.
 #
 #   ssh-build.sh <component dir> <image tag>
 #
@@ -62,7 +63,7 @@ workdir="/tmp/gitlab-build/${CI_PROJECT_PATH_SLUG:-cilium-custom-exporter}-${CI_
 echo "build on $user@$BUILD_SERVER_HOST:$workdir"
 trap 'remote rm -rf "$workdir" || true; rm -rf "$tmp"' EXIT
 
-git archive --format=tar HEAD "$component" ci/remote-build.sh |
+tar -cf - "$component" ci/remote-build.sh |
   remote "mkdir -p '$workdir' && tar -x -C '$workdir'"
 
 # Tag and repos are safe to pass unquoted: the tag is checked by the
