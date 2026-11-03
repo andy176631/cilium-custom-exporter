@@ -105,12 +105,21 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: [ALL]
+          env:
+            # Let the Go GC work harder before reaching the container limit.
+            # Keep it about 90% of limits.memory.
+            - name: GOMEMLIMIT
+              value: 900MiB
+          # The first list of CiliumIdentity objects is decoded in one piece
+          # before it is trimmed, so memory peaks at startup: about 24 KiB per
+          # identity (410 MiB for 16896 identities, measured), then about
+          # 60 MiB of live heap. Size the limit for the peak.
           resources:
             requests:
               cpu: 10m
-              memory: 64Mi
+              memory: 512Mi
             limits:
-              memory: 256Mi
+              memory: 1Gi
           livenessProbe:
             httpGet:
               path: /healthz
