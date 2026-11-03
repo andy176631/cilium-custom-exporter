@@ -17,6 +17,7 @@
 ```
 
 1. **Informer 快取**：啟動時對 `ciliumidentities` 做一次 list，之後用 watch 接收新增、修改、刪除，API server 只會送有變動的 identity。存進快取前會把每個 identity 縮成只剩名稱和 `security-labels`，丟掉 `managedFields` 等 metadata，減少記憶體用量。watch 斷線時 client-go 會自動重連並重新 list，期間沿用快取裡的資料。
+   - **記憶體高峰在啟動時**：第一次 list 會把整份清單一次解碼進記憶體後才縮減，所以高峰大約是每個 identity 24 KiB。實測 16896 個 identity（`kubectl get ciliumidentity` 約 7 秒）時，啟動高峰 RSS 約 410 MiB，穩定後 Go live heap 約 60 MiB。`deploy/deployment.yaml` 預設 `limits.memory: 1Gi`、`GOMEMLIMIT=900MiB`，大約可以撐到 4 萬個 identity；更多的話依每個 24 KiB 調高 limit，並把 `GOMEMLIMIT` 設成 limit 的 90% 左右。limit 不夠時 Pod 會在第一次 list 時被 OOMKill，重啟後又重新 list，反覆對 API server 造成負擔。
 2. **背景彙整**：快取完成第一次 list 後，每 `--collect-interval`（預設 30 秒）彙整一次：
    - 算出 identity 總數和每個 namespace 的數量。namespace 取自 security label `k8s:io.kubernetes.pod.namespace`，沒有的話用 `metadata.labels` 的 `io.kubernetes.pod.namespace`，兩者都沒有的 identity 歸在空字串 namespace。
    - 依數量排序 namespace（同數量依名稱），只對前 `--distinct-values-top-namespaces` 名，計算每個 security label key 有幾種不同的值。namespace label 本身不計入。
